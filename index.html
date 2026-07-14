@@ -17,13 +17,17 @@
   #modeSwitch{display:flex;gap:0;padding:12px 24px;background:var(--panel);border-bottom:1px solid var(--line);}
   .modebtn{flex:0 0 auto;font-size:12.5px;padding:9px 18px;border:1px solid var(--line);background:#1c2130;color:var(--mut);cursor:pointer;font-weight:650;}
   .modebtn:first-child{border-radius:7px 0 0 7px;}
-  .modebtn:last-child{border-radius:0 7px 7px 0;border-left:none;}
+  .modebtn:last-child{border-radius:0 7px 7px 0;}
+  /* Mit 3 Buttons braucht JEDER ausser dem ersten border-left:none (sonst doppelte Trennlinie
+     am mittleren Button) — vorher nur :last-child, das reichte fuer 2 Buttons */
+  .modebtn:not(:first-child){border-left:none;}
   .modebtn.active{background:var(--accent);border-color:var(--accent);color:#0e1016;}
   .modebtn:hover:not(.active){border-color:var(--accent);color:var(--txt);}
 
-  /* Modus "Nur Vorzeichen": Pool wird ausgeblendet, #work nutzt automatisch den vollen Platz
-     (flex:1 greift bereits, hier nur das Ausblenden selbst) */
+  /* Modus "Nur Vorzeichen" / L1 "Fehler kennen": Pool wird ausgeblendet, #work nutzt automatisch
+     den vollen Platz (flex:1 greift bereits, hier nur das Ausblenden selbst) */
   body.mode-vorzeichen #pool{display:none;}
+  body.mode-fehler #pool{display:none;}
 
   /* Vorgelegte, noch nicht aktive Pille im Vorzeichen-Modus: Symbol sichtbar, aber gedaempft,
      bis sie an der Reihe ist — nutzt die bestehende .pill-Basis, nur eine Zusatzklasse */
@@ -237,8 +241,9 @@
 
     #work{padding:20px 24px;}
 
-    /* Vorzeichen-Modus ohne Pool: Arbeitsbereich nicht ueber die volle Desktop-Breite ziehen */
+    /* Vorzeichen-Modus / L1 ohne Pool: Arbeitsbereich nicht ueber die volle Desktop-Breite ziehen */
     body.mode-vorzeichen #work{max-width:900px;margin:0 auto;}
+    body.mode-fehler #work{max-width:900px;margin:0 auto;}
   }
 </style>
 </head>
@@ -250,8 +255,9 @@
 </header>
 
 <div id="modeSwitch">
-  <button class="modebtn active" id="modeBauenBtn">Kette bauen</button>
-  <button class="modebtn" id="modeVorzeichenBtn">Nur Vorzeichen</button>
+  <button class="modebtn active" id="modeFehlerBtn">L1 · Fehler kennen</button>
+  <button class="modebtn" id="modeVorzeichenBtn">L2 · Vorzeichen setzen</button>
+  <button class="modebtn" id="modeBauenBtn">L3 · Alles bauen</button>
 </div>
 
 <div id="layout">
@@ -415,10 +421,19 @@
   // Sperren dieses Schritts. Wird in resetProgress() zurueckgesetzt (pro Kette/Kettenwechsel neu).
   let stepErrors = [];
 
-  // ---- Modus (NEU, additiv): 'bauen' = bisheriges Verhalten (Pool, Tippen/Drag),
-  // 'vorzeichen' = leichter Modus: ganze Kette liegt vor, nur Richtungen fehlen.
-  // Teilt sich currentIndex/placed/current/selbstcheck/checkStep/Warum-Runde 1:1 mit 'bauen'.
-  let mode = "bauen";
+  // ---- Modus (3-Level-Menue): 'fehler' (L1) = standalone Fehler-Suche, kein Baufortschritt,
+  // 'vorzeichen' (L2) = leichter Modus: ganze Kette liegt vor, nur Richtungen fehlen,
+  // 'bauen' (L3) = bisheriges Verhalten (Pool, Tippen/Drag).
+  // 'vorzeichen'/'bauen' teilen sich currentIndex/placed/current/selbstcheck/checkStep/Warum-Runde 1:1.
+  // 'fehler' nutzt NUR Challenge 1 der Warum-Runde (buildChallenge1), siehe startFehlerSuche().
+  // Einstiegslevel beim Laden ist 'fehler' (L1).
+  let mode = "fehler";
+
+  // ---- L1 "Fehler kennen" (NEU): eigener Lauf-Score der Fehler-Suche, UNABHAENGIG von
+  // sessionLog/Auswertung (die bleiben ausschliesslich L3 vorbehalten, siehe checkStep()/renderAuswertung()).
+  // l1Total = Anzahl gespielter Runden, l1Correct = davon auf Anhieb korrekt beurteilt.
+  let l1Total = 0;
+  let l1Correct = 0;
 
   // Rein fuers Rendering (keine Fluss-Logik!): merkt sich, welcher Schritt zuletzt gesperrt wurde,
   // damit das Detail-Panel dessen Mechanismus + Selbst-Check zeigen kann, bis der naechste Schritt
@@ -432,8 +447,9 @@
   const chainHiddenHintEl = document.getElementById("chainHiddenHint");
   const feedbackEl = document.getElementById("feedback");
   const taskTextEl = document.getElementById("taskText");
-  const modeBauenBtn = document.getElementById("modeBauenBtn");
+  const modeFehlerBtn = document.getElementById("modeFehlerBtn");
   const modeVorzeichenBtn = document.getElementById("modeVorzeichenBtn");
+  const modeBauenBtn = document.getElementById("modeBauenBtn");
   const auswertungBtn = document.getElementById("auswertungBtn");
   const auswertungEl = document.getElementById("auswertung");
 
@@ -490,7 +506,7 @@
 
   function renderPool() {
     poolListEl.innerHTML = "";
-    if (mode === "vorzeichen") return; // Modus "Nur Vorzeichen": kein Pool, Kette liegt komplett vor
+    if (mode === "vorzeichen" || mode === "fehler") return; // L2: kein Pool, Kette liegt komplett vor. L1: kein Baufortschritt ueberhaupt.
     poolIds.forEach(gid => {
       // schon gesperrt oder gerade im aktiven Slot -> nicht mehr im Pool
       if (placed.some(p => p.groesseId === gid)) return;
@@ -548,6 +564,11 @@
 
   function renderChain() {
     chainEl.innerHTML = "";
+
+    // L1 "Fehler kennen" (NEU): hat KEINEN Baufortschritt — die Kette bleibt die ganze Zeit
+    // verdeckt (hideChain(), siehe startFehlerSuche()), das Rendering laeuft ausschliesslich
+    // ueber renderWarumRunde(). Nichts hier aufbauen.
+    if (mode === "fehler") return;
 
     // Start-Pille (fest) — Richtung kommt aus C.ausloeser.richtung
     // (nicht hartcodiert "steigt", manche Ketten starten mit einem sinkenden Ausloeser)
@@ -765,6 +786,12 @@
   function renderDetailPanel() {
     detailPanelEl.innerHTML = "";
 
+    // L1 "Fehler kennen" (NEU): kein Detail-Panel — bleibt ausgeblendet, siehe renderChain().
+    if (mode === "fehler") {
+      detailPanelEl.style.display = "none";
+      return;
+    }
+
     if (isKetteKomplett()) {
       // Abschluss-Ergebnis + Verifizieren-Button laufen unveraendert ueber #feedback /
       // #warumRundeTrigger weiter (renderAbschlussPanel) — Detail-Panel wird hier nur ausgeblendet.
@@ -892,12 +919,17 @@
     if (!isKetteKomplett()) {
       feedbackEl.className = "";
       feedbackEl.style.display = "none";
-      // Warum-Runde ist nur nach Kettenabschluss verfuegbar; Kette wurde wieder geoeffnet -> zuruecksetzen
-      warumState = null;
-      warumTriggerEl.style.display = "none";
-      warumRundeEl.style.display = "none";
-      warumRundeEl.innerHTML = "";
-      showChain();
+      // Warum-Runde ist nur nach Kettenabschluss verfuegbar; Kette wurde wieder geoeffnet -> zuruecksetzen.
+      // AUSNAHME L1 "Fehler kennen": dort ist "Kette unvollstaendig" (currentIndex bleibt immer 0)
+      // der NORMALZUSTAND waehrend eine Fehler-Suche laeuft — warumState darf hier nicht angefasst
+      // werden, sonst wuerde jeder renderAll()-Aufruf die laufende Fehler-Suche-Runde killen.
+      if (mode !== "fehler") {
+        warumState = null;
+        warumTriggerEl.style.display = "none";
+        warumRundeEl.style.display = "none";
+        warumRundeEl.innerHTML = "";
+        showChain();
+      }
     }
   }
 
@@ -907,21 +939,30 @@
     return div.innerHTML;
   }
 
-  // ---- Modus-Umschalter (NEU, additiv) ----
-  // Wechselt zwischen 'bauen' (Pool, Tippen/Drag) und 'vorzeichen' (Kette liegt vor, nur
-  // Richtungen setzen). Setzt bei jedem Wechsel den Baufortschritt der aktuellen Kette zurueck,
-  // die Kette selbst (C) bleibt unangetastet.
+  // ---- Modus-Umschalter (3-Level-Menue) ----
+  // Wechselt zwischen 'fehler' (L1: standalone Fehler-Suche), 'vorzeichen' (L2: Kette liegt vor,
+  // nur Richtungen setzen) und 'bauen' (L3: Pool, Tippen/Drag). Setzt bei jedem Wechsel den
+  // Baufortschritt der aktuellen Kette zurueck, die Kette selbst (C) bleibt unangetastet.
   function setMode(newMode) {
     if (mode === newMode) return;
     mode = newMode;
-    modeBauenBtn.classList.toggle("active", mode === "bauen");
+    modeFehlerBtn.classList.toggle("active", mode === "fehler");
     modeVorzeichenBtn.classList.toggle("active", mode === "vorzeichen");
+    modeBauenBtn.classList.toggle("active", mode === "bauen");
+    document.body.classList.toggle("mode-fehler", mode === "fehler");
     document.body.classList.toggle("mode-vorzeichen", mode === "vorzeichen");
+    // resetProgress() raeumt u.a. warumState/warumRunde auf und zeigt die Kette wieder (showChain()) —
+    // das ist genau das noetige Aufraeumen beim Verlassen von L1 (Punkt "Wechsel WEG von L1" im Spec).
     resetProgress();
-    renderAll();
+    if (mode === "fehler") {
+      startFehlerSuche(); // L1: sofort eine neue Fehler-Suche-Runde starten (kein Baufortschritt noetig)
+    } else {
+      renderAll();
+    }
   }
-  modeBauenBtn.addEventListener("click", () => setMode("bauen"));
+  modeFehlerBtn.addEventListener("click", () => setMode("fehler"));
   modeVorzeichenBtn.addEventListener("click", () => setMode("vorzeichen"));
+  modeBauenBtn.addEventListener("click", () => setMode("bauen"));
 
   document.getElementById("resetBtn").addEventListener("click", () => {
     resetProgress();
@@ -931,16 +972,49 @@
     sessionLog = [];
     auswertungEl.innerHTML = "";
     auswertungEl.style.display = "none";
-    renderAll();
+    // L1-Lauf-Score gehoert zur selben "neuer Durchlauf beginnt"-Geste wie sessionLog.
+    l1Total = 0;
+    l1Correct = 0;
+    if (mode === "fehler") {
+      startFehlerSuche(); // sonst wuerde resetProgress()+renderAll() die Kette faelschlich sichtbar lassen (leer)
+    } else {
+      renderAll();
+    }
   });
 
   // Waehlt zufaellig eine andere gueltige Kette (moeglichst nicht die aktuelle) und laedt sie.
-  document.getElementById("randomChainBtn").addEventListener("click", () => {
+  // Gemeinsame Hilfsfunktion fuer den "Andere Kette"-Button UND den L1-"Naechste"-Button
+  // (siehe buildChallenge1()).
+  function loadRandomChain() {
     let choices = validChains.filter(c => c.id !== C.id);
     if (choices.length === 0) choices = validChains;
     const pick = choices[Math.floor(Math.random() * choices.length)];
     setChain(pick);
+  }
+  document.getElementById("randomChainBtn").addEventListener("click", () => {
+    loadRandomChain();
+    if (mode === "fehler") startFehlerSuche(); // sonst bliebe die Kette nach setChain() faelschlich sichtbar
   });
+
+  // ---- L1 "Fehler kennen" (NEU): standalone Fehler-Suche, OHNE dass vorher eine Kette gebaut
+  // werden muss. Nutzt EXAKT dieselbe Mechanik wie Challenge 1 der Warum-Runde (buildChallenge1(),
+  // siehe unten) — nur mit hoeherer Fehlerwahrscheinlichkeit (70% statt 50%), OHNE "Warum gewusst?"
+  // und OHNE Weiterschaltung zu Challenge 2 (buildChallenge1() zweigt dafuer auf warumState.l1 ab).
+  // Kette bleibt die ganze Zeit verdeckt (hideChain()) — es zaehlt nur Kopfrechnen.
+  function startFehlerSuche() {
+    const f = Math.floor(Math.random() * loesungsSequenz.length);
+    const hasError = Math.random() < 0.7; // L1: 70% Fehlerwahrscheinlichkeit (Warum-Runde regulaer: 50%)
+    warumState = {
+      l1: true,
+      step: 1,
+      c1: { f, hasError, selectedIdx: null, resolved: false },
+      c2: null // L1 nutzt nur Challenge 1 — Challenge 2 existiert hier nicht
+    };
+    warumTriggerEl.style.display = "none";
+    warumRundeEl.style.display = "block";
+    hideChain(); // Referenz verdecken, damit nicht simpel verglichen statt nachgedacht wird
+    renderWarumRunde();
+  }
 
   // ==================================================================
   // Warum-Runde (additiv): erscheint erst NACH Kettenabschluss.
@@ -995,8 +1069,16 @@
     const { f, hasError, selectedIdx, resolved } = warumState.c1;
 
     const h3 = document.createElement("h3");
-    h3.textContent = "Warum-Runde · Challenge 1 von 2: Fehler-Suche";
+    h3.textContent = warumState.l1 ? "L1 · Fehler kennen" : "Warum-Runde · Challenge 1 von 2: Fehler-Suche";
     wrap.appendChild(h3);
+
+    // L1 (NEU): eigener, schlanker Lauf-Zaehler — NICHT sessionLog/Auswertung.
+    if (warumState.l1) {
+      const scoreEl = document.createElement("div");
+      scoreEl.className = "warum-hint";
+      scoreEl.textContent = `Fehler-Suche · ${l1Correct}/${l1Total} richtig erkannt`;
+      wrap.appendChild(scoreEl);
+    }
 
     const frage = document.createElement("div");
     frage.className = "frage";
@@ -1056,6 +1138,11 @@
         chip.addEventListener("click", () => {
           warumState.c1.selectedIdx = i;
           warumState.c1.resolved = true;
+          if (warumState.l1) {
+            // Klick auf ein Glied ist nur richtig, wenn dort tatsaechlich der eingebaute Fehler sitzt.
+            l1Total++;
+            if (hasError && i === f) l1Correct++;
+          }
           renderWarumRunde();
         });
       }
@@ -1081,6 +1168,11 @@
       allCorrectBtn.addEventListener("click", () => {
         warumState.c1.selectedIdx = "correct";
         warumState.c1.resolved = true;
+        if (warumState.l1) {
+          // "Alles korrekt" ist nur richtig, wenn tatsaechlich kein Fehler eingebaut war.
+          l1Total++;
+          if (!hasError) l1Correct++;
+        }
         renderWarumRunde();
       });
     }
@@ -1101,14 +1193,27 @@
       }
       wrap.appendChild(res);
 
-      const weiterBtn = document.createElement("button");
-      weiterBtn.className = "btn primary weiter-btn";
-      weiterBtn.textContent = "Weiter zu Challenge 2";
-      weiterBtn.addEventListener("click", () => {
-        warumState.step = 2;
-        renderWarumRunde();
-      });
-      wrap.appendChild(weiterBtn);
+      if (warumState.l1) {
+        // L1: KEIN Challenge 2 — "Naechste" laedt eine neue Zufallskette + startet die naechste
+        // Fehler-Suche-Runde (Loop, siehe Spec Punkt 4).
+        const naechsteBtn = document.createElement("button");
+        naechsteBtn.className = "btn primary weiter-btn";
+        naechsteBtn.textContent = "Nächste";
+        naechsteBtn.addEventListener("click", () => {
+          loadRandomChain();
+          startFehlerSuche();
+        });
+        wrap.appendChild(naechsteBtn);
+      } else {
+        const weiterBtn = document.createElement("button");
+        weiterBtn.className = "btn primary weiter-btn";
+        weiterBtn.textContent = "Weiter zu Challenge 2";
+        weiterBtn.addEventListener("click", () => {
+          warumState.step = 2;
+          renderWarumRunde();
+        });
+        wrap.appendChild(weiterBtn);
+      }
     }
 
     return wrap;
@@ -1298,6 +1403,11 @@
 
   // ---- Initiales Laden: Default-Kette, falls vorhanden, sonst erste gueltige Kette ----
   setChain(validChains.find(c => c.id === "k_geldpolitik_expansiv") || validChains[0]);
+  // Einstiegslevel ist L1 ("fehler") — Button-Zustand steht schon im Markup (.active auf
+  // modeFehlerBtn), hier nur die Body-Klasse spiegeln + die erste Fehler-Suche-Runde starten.
+  document.body.classList.toggle("mode-fehler", mode === "fehler");
+  document.body.classList.toggle("mode-vorzeichen", mode === "vorzeichen");
+  if (mode === "fehler") startFehlerSuche();
 })();
 </script>
 
