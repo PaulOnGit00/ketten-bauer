@@ -202,6 +202,27 @@
   .chip.challenge.reveal-correct{border-color:var(--pos);}
   .chip.challenge.disabled{cursor:default;}
 
+  /* ---- L1 / Fehler-Suche: Knoten als Pille (Buchstabe + Pfeil, Bedeutung auf Hover) statt
+     wortreicher Box; der WARUM-Satz bleibt als Caption darunter (Pruefstoff). Nur im
+     .warum-panel gescoped — Bau-Modus-Pillen/-Chips bleiben unberuehrt. ---- */
+  .warum-panel .chip{background:transparent;border:none;border-radius:0;padding:0;min-width:0;max-width:210px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;}
+  .warum-panel .chip.locked{min-width:0;max-width:210px;}
+  .warum-panel .chip .lbl{display:none;}
+  /* Zustands-Boxen neutralisieren (hoehere Spezifitaet als der Basis-Override) — Farbe wandert auf die Pille */
+  .warum-panel .chip.challenge.picked-correct,
+  .warum-panel .chip.challenge.picked-wrong,
+  .warum-panel .chip.challenge.reveal-correct{background:transparent;border:none;}
+  .warum-panel .l1head{display:inline-flex;align-items:center;gap:6px;background:#1c2130;border:2px solid var(--line);border-radius:999px;padding:8px 16px;transition:border-color .12s;}
+  .warum-panel .l1head .sym{font-size:16px;font-weight:700;margin:0;}
+  .warum-panel .l1head .dirmark{margin:0;font-size:14px;font-weight:700;}
+  .warum-panel .chip.start .l1head{border-color:var(--pos);background:#16221c;}
+  .warum-panel .chip.challenge:not(.disabled):hover .l1head{border-color:var(--accent);}
+  .warum-panel .chip.challenge.picked-correct .l1head{border-color:var(--pos);background:#16221c;}
+  .warum-panel .chip.challenge.picked-wrong .l1head{border-color:var(--neg);background:#241616;}
+  .warum-panel .chip.challenge.reveal-correct .l1head{border-color:var(--pos);}
+  .warum-panel .chip .mech{margin-top:0;padding-top:0;border-top:none;text-align:center;max-width:190px;}
+  .warum-panel .subrow .arrow-sep{margin-top:14px;}
+
   .c2-options{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;}
   .c2-opt{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#1c2130;cursor:pointer;font-size:13px;user-select:none;}
   .c2-opt:hover{border-color:var(--accent);}
@@ -1100,9 +1121,10 @@
     startItem.className = "chain-item";
     startItem.innerHTML = `
       <div class="chip start">
-        <div class="sym">${escapeHtml(startG.symbol)}</div>
-        <div class="lbl">${escapeHtml(startG.label)}</div>
-        <div class="dirmark ${startDir === 'steigt' ? 'up' : 'down'}">${startDir === 'steigt' ? '↑' : '↓'}</div>
+        <div class="l1head" title="${escapeHtml(startG.label)}">
+          <div class="sym">${escapeHtml(startG.symbol)}</div>
+          <div class="dirmark ${startDir === 'steigt' ? 'up' : 'down'}">${startDir === 'steigt' ? '↑' : '↓'}</div>
+        </div>
       </div>
     `;
     row.appendChild(startItem);
@@ -1134,8 +1156,10 @@
       }
 
       chip.innerHTML = `
-        <div class="sym">${escapeHtml(g.symbol)}</div>
-        <div class="dirmark ${zeigeDir === 'steigt' ? 'up' : 'down'}">${zeigeDir === 'steigt' ? '↑' : '↓'}</div>
+        <div class="l1head" title="${escapeHtml(g.label)}">
+          <div class="sym">${escapeHtml(g.symbol)}</div>
+          <div class="dirmark ${zeigeDir === 'steigt' ? 'up' : 'down'}">${zeigeDir === 'steigt' ? '↑' : '↓'}</div>
+        </div>
         <div class="mech"><span class="mech-label">Warum</span>${escapeHtml(mechText)}</div>
       `;
 
