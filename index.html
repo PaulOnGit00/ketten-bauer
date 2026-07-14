@@ -243,7 +243,12 @@
 
     /* Vorzeichen-Modus / L1 ohne Pool: Arbeitsbereich nicht ueber die volle Desktop-Breite ziehen */
     body.mode-vorzeichen #work{max-width:900px;margin:0 auto;}
-    body.mode-fehler #work{max-width:900px;margin:0 auto;}
+    body.mode-fehler #work{max-width:1150px;margin:0 auto;}
+
+    /* Desktop (Mac/Safari): Ketten-Reihe der Warum-Runde bricht um statt horizontal zu scrollen —
+       die ganze Kette ist auf einen Blick sichtbar (wichtig fuer "finde den Fehler aus dem Kopf").
+       Mobile/iPad (< 820px) behaelt bewusst die scrollbare Einzeilen-Reihe. */
+    .warum-panel .subrow{flex-wrap:wrap;overflow-x:visible;}
   }
 </style>
 </head>
