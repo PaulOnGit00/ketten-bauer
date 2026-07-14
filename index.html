@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ketten-Bauer</title>
+<style>
+  :root{--bg:#0e1016;--panel:#161922;--line:#272d3a;--txt:#e6e9ef;--mut:#8b93a5;--accent:#6aa3ff;--pos:#7ee0a8;--neg:#ff8b8b;--warn:#e0c97e;}
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{padding:18px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
+  header h1{margin:0 0 6px;font-size:18px;font-weight:650;}
+  header p{margin:0;color:var(--mut);font-size:13px;}
+  header p b{color:var(--txt);}
+
+  /* ---- Modus-Umschalter (NEU, additiv): Segmented-Control ueber dem Arbeitsbereich ---- */
+  #modeSwitch{display:flex;gap:0;padding:12px 24px;background:var(--panel);border-bottom:1px solid var(--line);}
+  .modebtn{flex:0 0 auto;font-size:12.5px;padding:9px 18px;border:1px solid var(--line);background:#1c2130;color:var(--mut);cursor:pointer;font-weight:650;}
+  .modebtn:first-child{border-radius:7px 0 0 7px;}
+  .modebtn:last-child{border-radius:0 7px 7px 0;border-left:none;}
+  .modebtn.active{background:var(--accent);border-color:var(--accent);color:#0e1016;}
+  .modebtn:hover:not(.active){border-color:var(--accent);color:var(--txt);}
+
+  /* Modus "Nur Vorzeichen": Pool wird ausgeblendet, #work nutzt automatisch den vollen Platz
+     (flex:1 greift bereits, hier nur das Ausblenden selbst) */
+  body.mode-vorzeichen #pool{display:none;}
+
+  /* Vorgelegte, noch nicht aktive Pille im Vorzeichen-Modus: Symbol sichtbar, aber gedaempft,
+     bis sie an der Reihe ist — nutzt die bestehende .pill-Basis, nur eine Zusatzklasse */
+  .pill.pill-pending{opacity:.5;}
+
+  #layout{display:flex;flex-direction:column;gap:0;align-items:stretch;}
+
+  /* Pool: mobil/schmal = kompaktes Wrap-Grid oben; wird ab 820px zur linken Raster-Rail (siehe Media Query unten) */
+  #pool{width:100%;border-right:none;border-bottom:1px solid var(--line);padding:12px 14px;min-height:auto;}
+  #pool h2{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:0 0 12px;font-weight:650;}
+  #poolHint{font-size:11px;color:var(--mut);margin:-6px 0 12px;font-style:italic;}
+  #poolList{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;}
+
+  .tile{background:#1c2130;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:grab;user-select:none;transition:border-color .12s, transform .08s;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:52px;min-width:0;overflow:hidden;}
+  .tile:active{cursor:grabbing;}
+  .tile .sym{font-size:17px;font-weight:500;color:var(--txt);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tile .lbl{font-size:10.5px;color:var(--mut);margin-top:2px;line-height:1.25;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tile.dragging{opacity:.35;}
+  .tile:hover{border-color:var(--accent);}
+
+  /* Arbeitsbereich: Kette + Detail-Panel */
+  #work{flex:1;padding:14px 14px 24px;min-width:0;}
+  #work h2{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:0 0 14px;font-weight:650;}
+
+  /* Kette: schlanke Pillen-Reihe, bricht nie um, scrollt horizontal bei Overflow */
+  #chain{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;min-height:56px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow-x:auto;}
+
+  .chain-item{display:flex;align-items:flex-start;gap:10px;flex:0 0 auto;}
+  .arrow-sep{color:var(--mut);font-size:16px;flex:0 0 auto;margin-top:28px;padding:0 2px;}
+
+  .chip{position:relative;background:#1c2130;border:2px solid var(--line);border-radius:8px;padding:10px 12px;min-width:88px;flex:0 0 auto;text-align:center;}
+  .chip.start{border-color:var(--pos);background:#16221c;}
+  .chip .sym{font-size:18px;font-weight:700;}
+  .chip .lbl{font-size:10.5px;color:var(--mut);margin-top:2px;}
+  .chip .dirmark{margin-top:6px;font-size:15px;font-weight:700;}
+  .chip .dirmark.up{color:var(--pos);}
+  .chip .dirmark.down{color:var(--neg);}
+
+  .chip .btnrow{display:flex;gap:4px;margin-top:8px;justify-content:center;}
+  .dirbtn{width:26px;height:24px;border-radius:6px;border:1px solid var(--line);background:#12151d;color:var(--mut);cursor:pointer;font-size:13px;font-weight:700;line-height:1;}
+  .dirbtn:hover{border-color:var(--accent);color:var(--txt);}
+  .dirbtn.active-up{background:var(--pos);border-color:var(--pos);color:#0e1016;}
+  .dirbtn.active-down{background:var(--neg);border-color:var(--neg);color:#0e1016;}
+
+  .removeBtn{position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;background:#2a2f3c;border:1px solid var(--line);color:var(--mut);font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .removeBtn:hover{border-color:var(--neg);color:var(--neg);}
+
+  /* Validierungs-Zustände */
+  .chip.ok{border-color:var(--pos);}
+  .chip.wrong-dir{border-color:var(--warn);}
+  .chip.wrong-size{border-color:var(--neg);}
+  .chip.incomplete{border-color:var(--warn);}
+  .hint{font-size:10.5px;color:var(--warn);margin-top:6px;}
+
+  /* Slot (leerer Drop-Ziel) */
+  .slot{width:96px;min-height:70px;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:20px;transition:border-color .12s, background .12s;flex:0 0 auto;}
+  .slot.over{border-color:var(--accent);background:#1a2030;color:var(--accent);}
+
+  /* Schritt-Prüfen-Button an der aktiven Kachel */
+  .stepcheck-btn{margin-top:8px;width:100%;font-size:11px;padding:5px 10px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#0e1016;cursor:pointer;font-weight:700;}
+  .stepcheck-btn:hover{filter:brightness(1.1);}
+
+  /* Gesperrte (gruen bestaetigte) Kachel: breiter, damit Mechanismus + Selbst-Check darunter passen */
+  .chip.locked{min-width:190px;max-width:260px;}
+
+  /* Mechanismus-Reveal: gedaempft, klein, gehoert optisch zur Kachel */
+  .chip .mech{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);text-align:left;font-size:11px;line-height:1.4;color:var(--mut);}
+  .chip .mech .mech-label{display:inline-block;margin-right:4px;font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--accent);}
+
+  /* Selbst-Check-Zeile: "Warum gewusst?" Ja/Nein */
+  .chip .selfcheck{margin-top:8px;display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--mut);}
+  .chip .selfcheck .scbtn{padding:2px 8px;border-radius:5px;border:1px solid var(--line);background:#12151d;color:var(--mut);cursor:pointer;font-size:11px;font-weight:600;}
+  .chip .selfcheck .scbtn:hover{border-color:var(--accent);color:var(--txt);}
+  .chip .selfcheck .scbtn.active-ja{background:var(--pos);border-color:var(--pos);color:#0e1016;}
+  .chip .selfcheck .scbtn.active-nein{background:var(--neg);border-color:var(--neg);color:#0e1016;}
+
+  #actions{display:flex;gap:10px;margin-top:16px;}
+  .btn{font-size:13px;padding:9px 16px;border:1px solid var(--line);border-radius:7px;background:#1c2130;color:var(--txt);cursor:pointer;font-weight:600;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#0e1016;}
+  .btn.primary:hover{filter:brightness(1.1);}
+
+  #feedback{margin-top:16px;padding:12px 14px;border-radius:8px;font-size:13px;display:none;}
+  #feedback.success{display:block;background:#132b1f;border:1px solid var(--pos);color:var(--pos);}
+  #feedback.neutral{display:block;background:#1c2130;border:1px solid var(--line);color:var(--mut);}
+
+  /* ---- Bau-Phase: schlanke Pillen-Kette (NEU, ersetzt die alten .chip-Klumpen NUR hier —
+     .chip selbst bleibt unten fuer die Warum-Runde unveraendert) ---- */
+  .pill{position:relative;display:inline-flex;align-items:center;gap:6px;background:#1c2130;border:2px solid var(--line);border-radius:999px;padding:8px 14px;flex:0 0 auto;white-space:nowrap;}
+  .pill .sym{font-size:14px;font-weight:700;color:var(--txt);}
+  .pill .dirmark{font-size:13px;font-weight:700;}
+  .pill .dirmark.up{color:var(--pos);}
+  .pill .dirmark.down{color:var(--neg);}
+  .pill.pill-start{border-color:var(--pos);background:#16221c;}
+  .pill.pill-locked{border-color:var(--pos);}
+  .pill.pill-active{border-color:var(--accent);background:#182236;}
+  .pill.pill-active.wrong-size{border-color:var(--neg);}
+  .pill.pill-active.wrong-dir{border-color:var(--warn);}
+
+  .pill-remove{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#2a2f3c;border:1px solid var(--line);color:var(--mut);font-size:12px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .pill-remove:hover{border-color:var(--neg);color:var(--neg);}
+
+  .pill-sep{color:var(--mut);font-size:14px;flex:0 0 auto;align-self:center;padding:0 1px;}
+
+  .pill-slot{width:40px;height:40px;min-width:40px;border:2px dashed var(--line);border-radius:999px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:18px;flex:0 0 auto;transition:border-color .12s, background .12s;}
+  .pill-slot.over{border-color:var(--accent);background:#1a2030;color:var(--accent);}
+
+  /* ---- Detail-Panel: EIN Zustandsautomat-Panel unter der Kette. Uebernimmt die Controls,
+     den Mechanismus-Satz und den Selbst-Check, die frueher in der Pille selbst standen. ---- */
+  #detailPanel{margin-top:14px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:44px;}
+  #detailPanel .panel-prompt{color:var(--mut);font-size:13px;}
+  #detailPanel .panel-msg{font-size:12px;font-weight:700;margin-bottom:8px;}
+  #detailPanel .panel-msg.msg-neg{color:var(--neg);}
+  #detailPanel .panel-msg.msg-warn{color:var(--warn);}
+  #detailPanel .panel-q{font-size:14px;margin-bottom:10px;}
+  #detailPanel .panel-q .panel-sym{font-weight:700;font-size:16px;}
+  #detailPanel .panel-q .panel-lbl{color:var(--mut);}
+  #detailPanel .panel-dirrow{display:flex;gap:10px;margin-bottom:10px;}
+  #detailPanel .panel-dirbtn{flex:1;min-height:44px;font-size:14px;font-weight:700;border-radius:8px;border:1px solid var(--line);background:#12151d;color:var(--txt);cursor:pointer;}
+  #detailPanel .panel-dirbtn:hover{border-color:var(--accent);}
+  #detailPanel .panel-dirbtn.active-up{background:var(--pos);border-color:var(--pos);color:#0e1016;}
+  #detailPanel .panel-dirbtn.active-down{background:var(--neg);border-color:var(--neg);color:#0e1016;}
+  #detailPanel .panel-checkbtn{width:100%;min-height:44px;}
+  #detailPanel .panel-checkbtn:disabled{opacity:.4;cursor:not-allowed;}
+  #detailPanel .panel-locked{font-size:15px;font-weight:700;margin-bottom:4px;}
+  #detailPanel .panel-locked .dirmark.up{color:var(--pos);}
+  #detailPanel .panel-locked .dirmark.down{color:var(--neg);}
+  #detailPanel .mech{margin-top:0;text-align:left;font-size:12px;line-height:1.5;color:var(--mut);}
+  #detailPanel .mech-label{display:inline-block;margin-right:4px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--accent);}
+  #detailPanel .selfcheck{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);}
+  #detailPanel .selfcheck .scbtn{padding:8px 14px;min-height:40px;border-radius:6px;border:1px solid var(--line);background:#12151d;color:var(--mut);cursor:pointer;font-size:12px;font-weight:600;}
+  #detailPanel .selfcheck .scbtn:hover{border-color:var(--accent);color:var(--txt);}
+  #detailPanel .selfcheck .scbtn.active-ja{background:var(--pos);border-color:var(--pos);color:#0e1016;}
+  #detailPanel .selfcheck .scbtn.active-nein{background:var(--neg);border-color:var(--neg);color:#0e1016;}
+  #detailPanel .panel-hint{margin-top:10px;font-size:12px;color:var(--mut);font-style:italic;}
+
+  /* ---- Warum-Runde (additiv, erscheint erst nach Kettenabschluss) ---- */
+  #warumRundeTrigger{display:none;margin-top:14px;}
+  #warumRundeBtn{font-size:14px;padding:12px 22px;}
+  #chainHiddenHint{display:none;margin-top:10px;font-size:12px;color:var(--mut);font-style:italic;}
+  #warumRunde{display:none;}
+
+  /* ---- Auswertung (NEU, additiv): In-Memory-Session-Uebersicht ueber Kettenwechsel hinweg.
+     Nutzt .warum-panel/.resolution wieder, ergaenzt nur ein paar schlanke Zeilen-Klassen. ---- */
+  #auswertung{display:none;}
+  .ausw-kette{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .ausw-kette:last-child{border-bottom:none;}
+  .ausw-kette .ausw-modell{color:var(--mut);min-width:150px;}
+  .ausw-kette .ausw-step{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:5px;background:#12151d;border:1px solid var(--line);}
+  .ausw-kette .ausw-step.ok{color:var(--pos);border-color:var(--pos);}
+  .ausw-kette .ausw-step.err{color:var(--neg);border-color:var(--neg);}
+  .ausw-luecke{padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5;}
+  .ausw-luecke:last-child{border-bottom:none;}
+  .ausw-luecke .ausw-tag{color:var(--warn);font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.3px;margin-left:6px;}
+  .ausw-luecke .ausw-mech{color:var(--mut);display:block;margin-top:2px;}
+  .ausw-close-btn{margin-top:14px;}
+
+  .warum-panel{margin-top:20px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;}
+  .warum-panel h3{margin:0 0 10px;font-size:13px;font-weight:650;color:var(--txt);}
+  .warum-panel .frage{font-size:13px;color:var(--txt);margin-bottom:12px;}
+  .warum-panel .subrow{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:10px;overflow-x:auto;padding-bottom:6px;}
+  .warum-panel .resolution{margin-top:14px;padding:10px 12px;border-radius:8px;background:#12151d;border:1px solid var(--line);color:var(--mut);font-size:12px;line-height:1.5;}
+  .warum-panel .weiter-btn{margin-top:14px;}
+  .warum-hint{font-size:11px;color:var(--mut);margin-bottom:10px;}
+
+  .chip.challenge{cursor:pointer;min-width:160px;max-width:220px;text-align:left;}
+  .chip.challenge:hover{border-color:var(--accent);}
+  .chip.challenge .sym{text-align:center;}
+  .chip.challenge .dirmark{text-align:center;}
+  .chip.challenge.picked-correct{border-color:var(--pos);background:#16221c;}
+  .chip.challenge.picked-wrong{border-color:var(--neg);background:#241616;}
+  .chip.challenge.reveal-correct{border-color:var(--pos);}
+  .chip.challenge.disabled{cursor:default;}
+
+  .c2-options{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;}
+  .c2-opt{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#1c2130;cursor:pointer;font-size:13px;user-select:none;}
+  .c2-opt:hover{border-color:var(--accent);}
+  .c2-opt .c2-box{font-size:13px;color:var(--mut);}
+  .c2-opt.selected{border-color:var(--accent);background:#1a2030;}
+  .c2-opt.correct{border-color:var(--pos);background:#16221c;}
+  .c2-opt.incorrect{border-color:var(--neg);background:#241616;}
+  .c2-opt.disabled{cursor:default;}
+
+  .btn.correct{border-color:var(--pos);background:#16221c;color:var(--pos);}
+  .btn.incorrect{border-color:var(--neg);background:#241616;color:var(--neg);}
+
+  /* ---- Schmal (Handy, <820px): Basis-Layout ist bereits gestapelt (siehe Basisregeln oben,
+     #pool/#poolList/.tile sind dort schon mobil-first als kompaktes Wrap-Grid definiert).
+     Hier nur noch Touch-Ziel-Vergroesserung fuer allgemeine + Warum-Runde-Elemente (.chip.challenge,
+     .c2-opt bleiben inhaltlich unveraendert, nur der Breakpoint wurde von 640px auf 819px angehoben). ---- */
+  @media (max-width: 819px){
+    html,body{overflow-x:hidden;}
+    header{padding:14px 16px;}
+    #modeSwitch{padding:10px 16px;}
+    .modebtn{flex:1;min-height:42px;padding:10px 10px;}
+
+    #actions{flex-wrap:wrap;}
+    .btn{min-height:42px;padding:10px 16px;}
+    #warumRundeBtn{min-height:46px;}
+    .chip.challenge{min-width:140px;padding:10px 12px;}
+    .c2-opt{min-height:40px;padding:10px 14px;}
+  }
+
+  /* ---- Breit (Tablet/Desktop, ab 820px): Pool wird zur schmalen linken Raster-Rail,
+     rechts nutzen Kette + Detail-Panel die volle restliche Breite (iPad-first) ---- */
+  @media (min-width: 820px){
+    #layout{flex-direction:row;align-items:flex-start;}
+
+    #pool{width:165px;flex:0 0 165px;border-right:1px solid var(--line);border-bottom:none;min-height:calc(100vh - 90px);padding:16px;}
+    #poolList{display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;}
+
+    #work{padding:20px 24px;}
+
+    /* Vorzeichen-Modus ohne Pool: Arbeitsbereich nicht ueber die volle Desktop-Breite ziehen */
+    body.mode-vorzeichen #work{max-width:900px;margin:0 auto;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ketten-Bauer</h1>
+  <p id="taskText">IS-LM: Die Geldmenge <b>M</b> steigt. Bau die Wirkungskette bis zum Output <b>Y</b>.</p>
+</header>
+
+<div id="modeSwitch">
+  <button class="modebtn active" id="modeBauenBtn">Kette bauen</button>
+  <button class="modebtn" id="modeVorzeichenBtn">Nur Vorzeichen</button>
+</div>
+
+<div id="layout">
+  <div id="pool">
+    <h2>Größen</h2>
+    <p id="poolHint">Tippen oder ziehen</p>
+    <div id="poolList"></div>
+  </div>
+
+  <div id="work">
+    <h2 id="chainHeading">Deine Kette</h2>
+    <div id="chain"></div>
+    <div id="detailPanel"></div>
+    <div id="chainHiddenHint">Kette verdeckt — prüfe aus dem Kopf.</div>
+    <div id="actions">
+      <button class="btn" id="resetBtn">Zurücksetzen</button>
+      <button class="btn" id="randomChainBtn">Andere Kette (zufällig)</button>
+      <button class="btn" id="auswertungBtn">Auswertung</button>
+    </div>
+    <div id="feedback"></div>
+    <div id="warumRundeTrigger">
+      <button class="btn primary" id="warumRundeBtn">Verifizieren — finde den Fehler</button>
+    </div>
+    <div id="warumRunde"></div>
+    <div id="auswertung"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  const DATA = window.MAKRO_DATA;
+
+  // ---- Maps aufbauen ----
+  const Gm = {}; // groesse.id -> groesse
+  DATA.groessen.forEach(g => Gm[g.id] = g);
+  const Km = {}; // kante.id -> kante
+  DATA.kanten.forEach(k => Km[k.id] = k);
+  const Mm = {}; // modell.id -> modell
+  DATA.modelle.forEach(m => Mm[m.id] = m);
+
+  // ---- Gueltige Ketten (fuer "Andere Kette (zufaellig)"): einfache, vollstaendig
+  // durchgaengige, online-Ketten mit mind. 2 Schritten. ----
+  const validChains = DATA.ketten.filter(c =>
+    c.status === "online" && c.typ === "einfach" && c.schritte.length >= 2 &&
+    c.schritte.every((s, i) => i === 0 || Km[c.schritte[i - 1]].nach === Km[s].von) &&
+    Km[c.schritte[0]].von === c.ausloeser.groesse &&
+    Km[c.schritte[c.schritte.length - 1]].nach === c.netto.groesse
+  );
+
+  // ---- Kette laden (variabel — via setChain) ----
+  // Diese Variablen werden von setChain() bei jedem Kettenwechsel NEU gesetzt.
+  // Der restliche Bau-Flow (renderPool/renderChain/checkStep/Warum-Runde) liest sie
+  // nur noch, aendert sie selbst nicht.
+  let C;                 // aktuelle Kette
+  let loesungsSequenz;   // fuer jede Kante in C.schritte die naechste Zielgroesse, z.B. [reales_geldangebot, realzins, investition, output]
+  let sollRichtung;      // groesseId -> "steigt" | "sinkt"
+  let startGroesse;      // C.ausloeser.groesse
+  let poolIds;           // 10 gemischte Groessen-IDs (Loesung + Distraktoren)
+
+  function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // Setzt eine neue aktive Kette + alle davon abgeleiteten Werte, aktualisiert den
+  // Aufgabentext und setzt den Baufortschritt zurueck. Rendert am Ende einmal komplett.
+  function setChain(chain) {
+    C = chain;
+
+    // ---- Lösungs-Sequenz ableiten ----
+    loesungsSequenz = C.schritte.map(sId => Km[sId].nach);
+
+    // ---- Soll-Richtung je Knoten via Vorzeichen-Propagation ----
+    // Start = C.ausloeser.groesse mit Richtung C.ausloeser.richtung.
+    // Bei jeder Kante: wenn vorzeichen "-" ist, dreht sich die laufende Richtung um.
+    // Die "nach"-Groesse dieser Kante erhaelt die (ggf. gedrehte) Richtung.
+    sollRichtung = {};
+    let cur = C.ausloeser.richtung;
+    startGroesse = C.ausloeser.groesse;
+    sollRichtung[startGroesse] = cur;
+    C.schritte.forEach(sId => {
+      const kante = Km[sId];
+      if (kante.vorzeichen === "-") {
+        cur = (cur === "steigt") ? "sinkt" : "steigt";
+      }
+      // nur beim ersten Auftreten setzen
+      if (!(kante.nach in sollRichtung)) {
+        sollRichtung[kante.nach] = cur;
+      }
+    });
+
+    // ---- Pool zusammenstellen: Loesungs-Knoten (targets) + Distraktoren -> immer 10 Kacheln ----
+    // solutionNodes (Start + targets) ist NUR die Ausschluss-Menge fuer Distraktor-Kandidaten —
+    // der Start selbst landet NICHT im Pool, er steht schon fest als erste Kachel der Kette
+    // (genau wie im bisherigen, hartcodierten Verhalten: nur die 4 Zielgroessen + Distraktoren).
+    const targets = loesungsSequenz;
+    const solutionNodes = new Set([startGroesse, ...targets]);
+    const poolBase = new Set(targets);
+    const anzahlDistraktoren = 10 - poolBase.size;
+
+    // Zuerst Distraktoren aus Groessen mit einer Rolle im aktuellen Modell
+    const rollenKandidaten = shuffleArray(
+      DATA.groessen
+        .map(g => g.id)
+        .filter(gid => !solutionNodes.has(gid) && Gm[gid].rollen && Gm[gid].rollen[C.modell])
+    );
+    const distraktorIds = rollenKandidaten.slice(0, anzahlDistraktoren);
+
+    // Falls das nicht reicht: mit weiteren, noch nicht gewaehlten Groessen auffuellen
+    if (distraktorIds.length < anzahlDistraktoren) {
+      const rest = shuffleArray(
+        DATA.groessen
+          .map(g => g.id)
+          .filter(gid => !solutionNodes.has(gid) && !distraktorIds.includes(gid))
+      );
+      for (const gid of rest) {
+        if (distraktorIds.length >= anzahlDistraktoren) break;
+        distraktorIds.push(gid);
+      }
+    }
+
+    poolIds = shuffleArray([...poolBase, ...distraktorIds]);
+
+    // ---- Aufgabentext ----
+    // Header nennt den KANAL (C.label, bereits verifiziertes DB-Feld) statt des Modell-Tags:
+    // desambiguiert Ketten mit gleichen Endpunkten (z.B. P->Y via Pigou vs. Schuldendeflation)
+    // und behebt falsch getaggte modell-Felder im Header. Fallback auf Modell-Label.
+    const kanalLabel = C.label || (Mm[C.modell] ? Mm[C.modell].label : C.modell);
+    const ausSym = Gm[startGroesse].symbol;
+    const nettoSym = Gm[C.netto.groesse].symbol;
+    taskTextEl.innerHTML = `${escapeHtml(kanalLabel)}: ${escapeHtml(ausSym)} ${escapeHtml(C.ausloeser.richtung)}. Bau die Wirkungskette bis ${escapeHtml(nettoSym)}.`;
+
+    resetProgress();
+    renderAll();
+  }
+
+  // ---- Schritt-State-Machine ----
+  // Es gibt immer nur EINEN aktiven Slot: loesungsSequenz[currentIndex].
+  // placed = bereits GESPERRTE (gruen bestaetigte) Schritte, in Reihenfolge: { groesseId, richtung }.
+  //          placed.length ist immer === currentIndex (jede Sperrung erhoeht beide synchron).
+  // current = die noch UNGEPRUEFTE/offene Kachel im aktiven Slot: { groesseId, richtung, status, hint }
+  //           status ist null | "wrong-size" | "wrong-dir" (Ergebnis des letzten "Schritt pruefen"-Klicks).
+  //           current === null bedeutet: Slot ist leer, wartet auf einen Drop.
+  // selbstcheck[i] = "ja" | "nein" -> Antwort auf "Warum gewusst?" fuer den (gesperrten) Schritt i. Umstellbar.
+  let currentIndex = 0;
+  let placed = [];
+  let current = null;
+  let selbstcheck = [];
+  let draggedId = null; // aktuell gezogene Pool-Kachel (groesseId)
+
+  // ---- Auswertung (NEU, additiv): reines In-Memory-Session-Gedaechtnis, KEIN localStorage.
+  // sessionLog ueberlebt Kettenwechsel (setChain/resetProgress fassen es nicht an) und wird
+  // nur beim "Zurücksetzen"-Button-Klick geleert (siehe dortiger Handler).
+  // sessionLog[i] = ein Snapshot pro VOLLSTAENDIG abgeschlossener Kette (siehe checkStep()).
+  let sessionLog = [];
+  // stepErrors[currentIndex] = Liste der Fehltyp-Vorkommen ("wrong-size"/"wrong-dir") VOR dem
+  // Sperren dieses Schritts. Wird in resetProgress() zurueckgesetzt (pro Kette/Kettenwechsel neu).
+  let stepErrors = [];
+
+  // ---- Modus (NEU, additiv): 'bauen' = bisheriges Verhalten (Pool, Tippen/Drag),
+  // 'vorzeichen' = leichter Modus: ganze Kette liegt vor, nur Richtungen fehlen.
+  // Teilt sich currentIndex/placed/current/selbstcheck/checkStep/Warum-Runde 1:1 mit 'bauen'.
+  let mode = "bauen";
+
+  // Rein fuers Rendering (keine Fluss-Logik!): merkt sich, welcher Schritt zuletzt gesperrt wurde,
+  // damit das Detail-Panel dessen Mechanismus + Selbst-Check zeigen kann, bis der naechste Schritt
+  // angefasst wird (current wieder gesetzt) oder zurueckgesetzt wird.
+  let lastLockedIdx = null;
+
+  const poolListEl = document.getElementById("poolList");
+  const chainEl = document.getElementById("chain");
+  const detailPanelEl = document.getElementById("detailPanel");
+  const chainHeadingEl = document.getElementById("chainHeading");
+  const chainHiddenHintEl = document.getElementById("chainHiddenHint");
+  const feedbackEl = document.getElementById("feedback");
+  const taskTextEl = document.getElementById("taskText");
+  const modeBauenBtn = document.getElementById("modeBauenBtn");
+  const modeVorzeichenBtn = document.getElementById("modeVorzeichenBtn");
+  const auswertungBtn = document.getElementById("auswertungBtn");
+  const auswertungEl = document.getElementById("auswertung");
+
+  // Setzt den Baufortschritt der AKTUELLEN Kette zurueck (keine neue Kette gewaehlt).
+  // Genutzt vom "Zurücksetzen"-Button UND von setChain() beim Kettenwechsel.
+  function resetProgress() {
+    currentIndex = 0;
+    placed = [];
+    current = null;
+    selbstcheck = [];
+    stepErrors = [];
+    lastLockedIdx = null;
+    warumState = null;
+    warumTriggerEl.style.display = "none";
+    warumRundeEl.style.display = "none";
+    warumRundeEl.innerHTML = "";
+    showChain();
+  }
+
+  // Blendet die gebaute Kette (+ Überschrift + Detail-Panel) aus/ein. Wird waehrend der
+  // Warum-Runde genutzt, damit der Nutzer nicht einfach oben/unten vergleicht, sondern aus
+  // dem Kopf prueft.
+  function hideChain() {
+    chainEl.style.display = "none";
+    chainHeadingEl.style.display = "none";
+    chainHiddenHintEl.style.display = "block";
+    detailPanelEl.style.display = "none";
+  }
+  function showChain() {
+    chainEl.style.display = "";
+    chainHeadingEl.style.display = "";
+    chainHiddenHintEl.style.display = "none";
+    detailPanelEl.style.display = "";
+  }
+
+  function isKetteKomplett() {
+    return currentIndex >= loesungsSequenz.length;
+  }
+
+  // Platziert eine Groesse (per gid) im aktiven Slot — gemeinsame Logik fuer
+  // Drag&Drop (Desktop) UND Tippen/Klick (Touch/iPhone). Macht exakt das, was
+  // der bisherige erfolgreiche Drop gemacht hat: prueft ob ueberhaupt ein
+  // aktiver Slot frei ist und die Groesse noch nicht platziert wurde, setzt
+  // sie dann als ungeprueften aktuellen Schritt.
+  function placeTile(gid) {
+    if (!gid) return;
+    if (isKetteKomplett()) return; // kein aktiver Slot mehr vorhanden
+    if (current) return; // aktiver Slot ist schon mit einer ungeprueften Kachel belegt
+    if (placed.some(p => p.groesseId === gid)) return; // schon gesperrt
+    current = { groesseId: gid, richtung: null, status: null, hint: null };
+    lastLockedIdx = null; // Panel wechselt jetzt auf "Richtung fehlt" statt den vorigen Sperr-Status zu zeigen
+    renderAll();
+  }
+
+  function renderPool() {
+    poolListEl.innerHTML = "";
+    if (mode === "vorzeichen") return; // Modus "Nur Vorzeichen": kein Pool, Kette liegt komplett vor
+    poolIds.forEach(gid => {
+      // schon gesperrt oder gerade im aktiven Slot -> nicht mehr im Pool
+      if (placed.some(p => p.groesseId === gid)) return;
+      if (current && current.groesseId === gid) return;
+      const g = Gm[gid];
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.draggable = true;
+      tile.dataset.gid = gid;
+      tile.title = g.label;
+      tile.innerHTML = `<div class="sym">${escapeHtml(g.symbol)}</div><div class="lbl">${escapeHtml(g.label)}</div>`;
+      tile.addEventListener("dragstart", (e) => {
+        draggedId = gid;
+        tile.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", gid);
+      });
+      tile.addEventListener("dragend", () => {
+        tile.classList.remove("dragging");
+        draggedId = null;
+      });
+      // Touch/Klick-Unterstuetzung: Tippen auf eine Pool-Kachel platziert sie im aktiven Slot.
+      // Nach einem echten Drag feuert der Browser keinen click-Event auf dem Element,
+      // daher keine Doppel-Platzierung durch Drag+Klick. placeTile() ist zusaetzlich
+      // gegen "Slot belegt" / "Groesse schon platziert" abgesichert.
+      tile.addEventListener("click", () => {
+        placeTile(gid);
+      });
+      poolListEl.appendChild(tile);
+    });
+  }
+
+  // Baut das Mechanismus-Reveal + die Selbst-Check-Zeile fuer einen gesperrten Schritt idx
+  function buildRevealHtml(idx) {
+    const mechText = Km[C.schritte[idx]].mechanismus;
+    const antwort = selbstcheck[idx];
+    return `
+      <div class="mech"><span class="mech-label">Warum</span>${escapeHtml(mechText)}</div>
+      <div class="selfcheck">
+        <span>Warum gewusst?</span>
+        <button class="scbtn ja-btn ${antwort === 'ja' ? 'active-ja' : ''}" data-idx="${idx}">Ja</button>
+        <button class="scbtn nein-btn ${antwort === 'nein' ? 'active-nein' : ''}" data-idx="${idx}">Nein</button>
+      </div>
+    `;
+  }
+
+  // Haengt ein "→"-Trennzeichen an die Pillen-Kette an (Bau-Phase). Eigene Klasse (.pill-sep),
+  // damit die von der Warum-Runde genutzte .arrow-sep-Klasse unangetastet bleibt.
+  function appendChainSep() {
+    const sep = document.createElement("div");
+    sep.className = "pill-sep";
+    sep.textContent = "→";
+    chainEl.appendChild(sep);
+  }
+
+  function renderChain() {
+    chainEl.innerHTML = "";
+
+    // Start-Pille (fest) — Richtung kommt aus C.ausloeser.richtung
+    // (nicht hartcodiert "steigt", manche Ketten starten mit einem sinkenden Ausloeser)
+    const startG = Gm[startGroesse];
+    const startDirKlasse = C.ausloeser.richtung === "steigt" ? "up" : "down";
+    const startDirPfeil = C.ausloeser.richtung === "steigt" ? "↑" : "↓";
+    const startPill = document.createElement("div");
+    startPill.className = "pill pill-start";
+    startPill.title = startG.label;
+    startPill.innerHTML = `
+      <span class="sym">${escapeHtml(startG.symbol)}</span>
+      <span class="dirmark ${startDirKlasse}">${startDirPfeil}</span>
+    `;
+    chainEl.appendChild(startPill);
+
+    // Modus "Nur Vorzeichen" (NEU, additiv): eigener Render-Pfad, zeigt die ganze Kette sofort.
+    // Bau-Modus-Pfad darunter bleibt komplett unveraendert.
+    if (mode === "vorzeichen") {
+      renderChainVorzeichen();
+      return;
+    }
+
+    // Gesperrte (bereits korrekt geprüfte) Schritte — statische Pille, Details stehen im Detail-Panel
+    placed.forEach((p) => {
+      appendChainSep();
+      const g = Gm[p.groesseId];
+      const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+      const pill = document.createElement("div");
+      pill.className = "pill pill-locked";
+      pill.title = g.label;
+      pill.innerHTML = `
+        <span class="sym">${escapeHtml(g.symbol)}</span>
+        <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span>
+      `;
+      chainEl.appendChild(pill);
+    });
+
+    if (isKetteKomplett()) {
+      renderAbschlussPanel();
+      return;
+    }
+
+    // Aktiver Slot: entweder leer (Drop-Ziel) oder mit ungeprüfter Pille
+    appendChainSep();
+
+    if (!current) {
+      const slot = document.createElement("div");
+      slot.className = "pill-slot";
+      slot.textContent = "+";
+      slot.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        slot.classList.add("over");
+      });
+      slot.addEventListener("dragleave", () => {
+        slot.classList.remove("over");
+      });
+      slot.addEventListener("drop", (e) => {
+        e.preventDefault();
+        slot.classList.remove("over");
+        const gid = e.dataTransfer.getData("text/plain") || draggedId;
+        placeTile(gid);
+      });
+      chainEl.appendChild(slot);
+    } else {
+      const g = Gm[current.groesseId];
+      const pill = document.createElement("div");
+      pill.className = "pill pill-active";
+      pill.title = g.label;
+      if (current.status === "wrong-size") pill.classList.add("wrong-size");
+      else if (current.status === "wrong-dir") pill.classList.add("wrong-dir");
+
+      let dirMarkHtml = "";
+      if (current.richtung === "steigt") dirMarkHtml = `<span class="dirmark up">↑</span>`;
+      else if (current.richtung === "sinkt") dirMarkHtml = `<span class="dirmark down">↓</span>`;
+
+      pill.innerHTML = `
+        <span class="sym">${escapeHtml(g.symbol)}</span>
+        ${dirMarkHtml}
+      `;
+
+      // Entfernen bleibt an der Pille (keine State-Aenderung ausser current=null, wie bisher) —
+      // Richtung/Prüfen/Mechanismus/Selbst-Check stehen jetzt im Detail-Panel (siehe renderDetailPanel).
+      const rm = document.createElement("button");
+      rm.className = "pill-remove";
+      rm.textContent = "×";
+      rm.title = "Entfernen";
+      rm.addEventListener("click", () => {
+        current = null;
+        renderAll();
+      });
+      pill.appendChild(rm);
+
+      chainEl.appendChild(pill);
+    }
+  }
+
+  // ---- Modus "Nur Vorzeichen" (NEU, additiv): rendert ALLE loesungsSequenz-Knoten sofort als
+  // Pillen (Start-Pille kommt schon aus renderChain() davor). Fuer jeden Knoten:
+  //  - i < placed.length      -> gesperrt, mit Pfeil (identischer Markup wie im Bau-Modus)
+  //  - i === currentIndex && current gesetzt -> aktive, ungeprüfte Pille (Pfeil falls schon gewaehlt)
+  //  - sonst (auch i === currentIndex waehrend current===null, d.h. Reveal-Pause) -> neutrale,
+  //    gedaempfte Pille nur mit Symbol, kein Pfeil.
+  // Die eigentliche Zielgroesse jedes Schritts ist HIER immer vorgegeben (loesungsSequenz[i]) —
+  // das ist der einzige konzeptionelle Unterschied zum Bau-Modus (dort waehlt der Nutzer sie).
+  function renderChainVorzeichen() {
+    for (let i = 0; i < loesungsSequenz.length; i++) {
+      appendChainSep();
+      const gid = loesungsSequenz[i];
+      const g = Gm[gid];
+
+      if (i < placed.length) {
+        const p = placed[i];
+        const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+        const pill = document.createElement("div");
+        pill.className = "pill pill-locked";
+        pill.title = g.label;
+        pill.innerHTML = `
+          <span class="sym">${escapeHtml(g.symbol)}</span>
+          <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span>
+        `;
+        chainEl.appendChild(pill);
+      } else if (i === currentIndex && current) {
+        const pill = document.createElement("div");
+        pill.className = "pill pill-active";
+        pill.title = g.label;
+        if (current.status === "wrong-dir") pill.classList.add("wrong-dir");
+
+        let dirMarkHtml = "";
+        if (current.richtung === "steigt") dirMarkHtml = `<span class="dirmark up">↑</span>`;
+        else if (current.richtung === "sinkt") dirMarkHtml = `<span class="dirmark down">↓</span>`;
+
+        pill.innerHTML = `<span class="sym">${escapeHtml(g.symbol)}</span>${dirMarkHtml}`;
+        chainEl.appendChild(pill);
+      } else {
+        const pill = document.createElement("div");
+        pill.className = "pill pill-pending";
+        pill.title = g.label;
+        pill.innerHTML = `<span class="sym">${escapeHtml(g.symbol)}</span>`;
+        chainEl.appendChild(pill);
+      }
+    }
+
+    if (isKetteKomplett()) {
+      renderAbschlussPanel();
+    }
+  }
+
+  // Prueft NUR den aktuellen Schritt (current) gegen loesungsSequenz[currentIndex] + sollRichtung
+  function checkStep() {
+    if (!current || !current.richtung) return;
+    const erwarteteGroesse = loesungsSequenz[currentIndex];
+    const groesseKorrekt = current.groesseId === erwarteteGroesse;
+    const richtungKorrekt = groesseKorrekt && current.richtung === sollRichtung[erwarteteGroesse];
+
+    if (!groesseKorrekt) {
+      current.status = "wrong-size"; // rot, nicht gesperrt -> User entfernt per × und zieht neu
+      // Auswertung (NEU, additiv): Fehltyp-Vorkommen fuer diesen Schritt mitschreiben, Fluss unveraendert.
+      if (!stepErrors[currentIndex]) stepErrors[currentIndex] = [];
+      stepErrors[currentIndex].push("wrong-size");
+    } else if (!richtungKorrekt) {
+      current.status = "wrong-dir"; // gelb, nicht gesperrt -> User stellt +/- um und prueft erneut
+      if (!stepErrors[currentIndex]) stepErrors[currentIndex] = [];
+      stepErrors[currentIndex].push("wrong-dir");
+    } else {
+      // beides richtig -> sperren, Mechanismus aufdecken, naechsten Schritt oeffnen
+      placed.push({ groesseId: current.groesseId, richtung: current.richtung });
+      lastLockedIdx = placed.length - 1; // nur fuers Detail-Panel-Rendering, keine Fluss-Logik
+      current = null;
+      currentIndex++;
+
+      // Auswertung (NEU, additiv): Kette gerade jetzt vollstaendig geworden -> genau EIN
+      // Snapshot in sessionLog. Feuert dadurch pro abgeschlossener Kette genau einmal.
+      if (isKetteKomplett()) {
+        sessionLog.push({
+          chainId: C.id,
+          modell: C.modell,
+          nettoSym: Gm[C.netto.groesse].symbol,
+          nettoRichtung: C.netto.richtung,
+          steps: loesungsSequenz.map((gid, i) => ({
+            groesseId: gid,
+            symbol: Gm[gid].symbol,
+            soll: sollRichtung[gid],
+            mechanismus: Km[C.schritte[i]].mechanismus,
+            errors: stepErrors[i] || [],
+            selfcheck: selbstcheck[i] || null,
+            korrektErstversuch: (stepErrors[i] || []).length === 0
+          }))
+        });
+      }
+    }
+    renderAll();
+  }
+
+  function renderAbschlussPanel() {
+    feedbackEl.style.display = "block";
+    feedbackEl.className = "success";
+    const nettoG = Gm[C.netto.groesse];
+    const pfeil = C.netto.richtung === "steigt" ? "↑" : "↓";
+    const janzahl = selbstcheck.filter(v => v === "ja").length;
+    feedbackEl.innerHTML = `
+      ✓ Kette komplett — Netto: ${escapeHtml(nettoG.symbol)} ${pfeil} (${escapeHtml(C.netto.richtung)})<br>
+      Warum gewusst: ${janzahl} von ${loesungsSequenz.length}
+    `;
+    // Warum-Runde-Trigger nur zeigen, wenn noch keine Warum-Runde laeuft (die laeuft dann in #warumRunde weiter)
+    if (!warumState) {
+      warumTriggerEl.style.display = "block";
+    }
+  }
+
+  // Zustandsautomat fuer das EINE Detail-Panel unter der Kette. Liest ausschliesslich den
+  // bestehenden Bau-Flow-State (current/placed/currentIndex/lastLockedIdx/selbstcheck) und loest
+  // exakt dieselben State-Operationen aus wie zuvor die Controls in der Pille (current.richtung
+  // setzen, checkStep(), selbstcheck[idx] setzen) — es aendert sich nur WO das gerendert wird.
+  function renderDetailPanel() {
+    detailPanelEl.innerHTML = "";
+
+    if (isKetteKomplett()) {
+      // Abschluss-Ergebnis + Verifizieren-Button laufen unveraendert ueber #feedback /
+      // #warumRundeTrigger weiter (renderAbschlussPanel) — Detail-Panel wird hier nur ausgeblendet.
+      detailPanelEl.style.display = "none";
+      return;
+    }
+    detailPanelEl.style.display = "block";
+
+    // ---- Fall 1: aktiver Schritt platziert (ungeprueft) ----
+    if (current) {
+      const g = Gm[current.groesseId];
+      const wrap = document.createElement("div");
+      wrap.className = "panel-body";
+
+      if (current.status === "wrong-size" || current.status === "wrong-dir") {
+        const msg = document.createElement("div");
+        msg.className = "panel-msg " + (current.status === "wrong-size" ? "msg-neg" : "msg-warn");
+        msg.textContent = current.status === "wrong-size" ? "Nicht der nächste Schritt" : "Richtung stimmt nicht";
+        wrap.appendChild(msg);
+      }
+
+      const q = document.createElement("div");
+      q.className = "panel-q";
+      q.innerHTML = `<span class="panel-sym">${escapeHtml(g.symbol)}</span> <span class="panel-lbl">(${escapeHtml(g.label)})</span> — steigt oder sinkt?`;
+      wrap.appendChild(q);
+
+      const dirRow = document.createElement("div");
+      dirRow.className = "panel-dirrow";
+      const upBtn = document.createElement("button");
+      upBtn.className = "panel-dirbtn " + (current.richtung === "steigt" ? "active-up" : "");
+      upBtn.innerHTML = "↑ steigt";
+      upBtn.addEventListener("click", () => {
+        current.richtung = "steigt";
+        current.status = null; // neue Richtung -> vorheriges Pruef-Ergebnis verwerfen (wie bisher)
+        renderAll();
+      });
+      const downBtn = document.createElement("button");
+      downBtn.className = "panel-dirbtn " + (current.richtung === "sinkt" ? "active-down" : "");
+      downBtn.innerHTML = "↓ sinkt";
+      downBtn.addEventListener("click", () => {
+        current.richtung = "sinkt";
+        current.status = null;
+        renderAll();
+      });
+      dirRow.appendChild(upBtn);
+      dirRow.appendChild(downBtn);
+      wrap.appendChild(dirRow);
+
+      const checkBtn = document.createElement("button");
+      checkBtn.className = "btn primary panel-checkbtn";
+      checkBtn.textContent = "Schritt prüfen";
+      checkBtn.disabled = !current.richtung;
+      checkBtn.addEventListener("click", checkStep);
+      wrap.appendChild(checkBtn);
+
+      detailPanelEl.appendChild(wrap);
+      return;
+    }
+
+    // ---- Fall 2: kein aktiver Schritt, aber gerade eben einen gesperrt -> Reveal zeigen ----
+    if (lastLockedIdx !== null && lastLockedIdx < placed.length) {
+      const idx = lastLockedIdx;
+      const p = placed[idx];
+      const g = Gm[p.groesseId];
+      const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+
+      const wrap = document.createElement("div");
+      wrap.className = "panel-body";
+      // Hinweis-/Weiter-Zeile unterscheidet sich je Modus: im Bau-Modus tippt man die naechste
+      // Groesse aus dem Pool (das triggert placeTile -> naechster Schritt). Im Vorzeichen-Modus
+      // gibt es keinen Pool, also ein expliziter "Weiter"-Button, der denselben Effekt hat
+      // (naechste, vorgegebene Zielgroesse als current setzen).
+      const stepHtml = mode === "vorzeichen" ? "" : `<div class="panel-hint">→ nächste Größe tippen</div>`;
+      wrap.innerHTML = `
+        <div class="panel-locked">✓ <span class="sym">${escapeHtml(g.symbol)}</span> <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span></div>
+        ${buildRevealHtml(idx)}
+        ${stepHtml}
+      `;
+      wrap.querySelector(".ja-btn").addEventListener("click", () => {
+        selbstcheck[idx] = "ja";
+        renderAll();
+      });
+      wrap.querySelector(".nein-btn").addEventListener("click", () => {
+        selbstcheck[idx] = "nein";
+        renderAll();
+      });
+      if (mode === "vorzeichen" && !isKetteKomplett()) {
+        const weiterBtn = document.createElement("button");
+        weiterBtn.className = "btn primary panel-checkbtn";
+        weiterBtn.style.marginTop = "10px";
+        weiterBtn.textContent = "Weiter";
+        weiterBtn.addEventListener("click", () => {
+          current = { groesseId: loesungsSequenz[currentIndex], richtung: null, status: null, hint: null };
+          lastLockedIdx = null;
+          renderAll();
+        });
+        wrap.appendChild(weiterBtn);
+      }
+      detailPanelEl.appendChild(wrap);
+      return;
+    }
+
+    // ---- Fall 3: kein aktiver Schritt, nichts gerade gesperrt -> Prompt ----
+    const prompt = document.createElement("div");
+    prompt.className = "panel-body panel-prompt";
+    prompt.textContent = mode === "vorzeichen" ? "Kette wird geladen…" : "Tippe die nächste Größe aus dem Pool.";
+    detailPanelEl.appendChild(prompt);
+  }
+
+  // Modus "Nur Vorzeichen" (NEU, additiv): hat keinen Pool zum Tippen, also muss die naechste
+  // (vorgegebene) Zielgroesse automatisch als "current" gesetzt werden, SOBALD kein Schritt gerade
+  // zur Pruefung offen ist UND keine Reveal-Pause laeuft (lastLockedIdx !== null haelt die Reveal-
+  // Anzeige/den "Weiter"-Button sichtbar, bis der Nutzer aktiv weiterklickt). Bau-Modus unberuehrt.
+  function syncVorzeichenCurrent() {
+    if (mode === "vorzeichen" && !current && lastLockedIdx === null && !isKetteKomplett()) {
+      current = { groesseId: loesungsSequenz[currentIndex], richtung: null, status: null, hint: null };
+    }
+  }
+
+  function renderAll() {
+    syncVorzeichenCurrent();
+    renderPool();
+    renderChain();
+    renderDetailPanel();
+    if (!isKetteKomplett()) {
+      feedbackEl.className = "";
+      feedbackEl.style.display = "none";
+      // Warum-Runde ist nur nach Kettenabschluss verfuegbar; Kette wurde wieder geoeffnet -> zuruecksetzen
+      warumState = null;
+      warumTriggerEl.style.display = "none";
+      warumRundeEl.style.display = "none";
+      warumRundeEl.innerHTML = "";
+      showChain();
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ---- Modus-Umschalter (NEU, additiv) ----
+  // Wechselt zwischen 'bauen' (Pool, Tippen/Drag) und 'vorzeichen' (Kette liegt vor, nur
+  // Richtungen setzen). Setzt bei jedem Wechsel den Baufortschritt der aktuellen Kette zurueck,
+  // die Kette selbst (C) bleibt unangetastet.
+  function setMode(newMode) {
+    if (mode === newMode) return;
+    mode = newMode;
+    modeBauenBtn.classList.toggle("active", mode === "bauen");
+    modeVorzeichenBtn.classList.toggle("active", mode === "vorzeichen");
+    document.body.classList.toggle("mode-vorzeichen", mode === "vorzeichen");
+    resetProgress();
+    renderAll();
+  }
+  modeBauenBtn.addEventListener("click", () => setMode("bauen"));
+  modeVorzeichenBtn.addEventListener("click", () => setMode("vorzeichen"));
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    resetProgress();
+    // Auswertung (NEU, additiv): "Zurücksetzen" ist der EINZIGE Ort, an dem sessionLog geleert
+    // wird — ein neuer Durchlauf beginnt. Kettenwechsel (setChain/"Andere Kette") lassen
+    // sessionLog bewusst unangetastet, damit ueber mehrere Ketten hinweg ausgewertet werden kann.
+    sessionLog = [];
+    auswertungEl.innerHTML = "";
+    auswertungEl.style.display = "none";
+    renderAll();
+  });
+
+  // Waehlt zufaellig eine andere gueltige Kette (moeglichst nicht die aktuelle) und laedt sie.
+  document.getElementById("randomChainBtn").addEventListener("click", () => {
+    let choices = validChains.filter(c => c.id !== C.id);
+    if (choices.length === 0) choices = validChains;
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    setChain(pick);
+  });
+
+  // ==================================================================
+  // Warum-Runde (additiv): erscheint erst NACH Kettenabschluss.
+  // Rendert eigene, read-only Kacheln; ruehrt die oben gebaute Kette nicht an.
+  // Zwei Challenges nacheinander, alle Daten aus C / loesungsSequenz / sollRichtung / Km / Gm abgeleitet.
+  // ==================================================================
+  const warumTriggerEl = document.getElementById("warumRundeTrigger");
+  const warumRundeEl = document.getElementById("warumRunde");
+  const warumRundeBtn = document.getElementById("warumRundeBtn");
+
+  // warumState = null (keine Warum-Runde aktiv) oder:
+  // { step: 1|2,
+  //   c1: { f, hasError, selectedIdx, resolved },   // selectedIdx: null | Schritt-Index | "correct" (Alles-korrekt geklickt)
+  //   c2: { g, selected: Set<number>, checked } }
+  let warumState = null;
+
+  // Knoten-Sequenz der Kette: node0 = Start, node_{i+1} = loesungsSequenz[i]
+  function nodeGroesseAt(i) {
+    return i === 0 ? startGroesse : loesungsSequenz[i - 1];
+  }
+
+  warumRundeBtn.addEventListener("click", () => {
+    const f = Math.floor(Math.random() * loesungsSequenz.length);
+    const g = Math.floor(Math.random() * loesungsSequenz.length);
+    const hasError = Math.random() < 0.5; // manchmal ist die Kette komplett korrekt, kein Fehler eingebaut
+    warumState = {
+      step: 1,
+      c1: { f, hasError, selectedIdx: null, resolved: false },
+      c2: { g, selected: new Set(), checked: false }
+    };
+    warumTriggerEl.style.display = "none";
+    warumRundeEl.style.display = "block";
+    hideChain(); // Referenz verdecken, damit nicht simpel verglichen statt nachgedacht wird
+    renderWarumRunde();
+  });
+
+  function renderWarumRunde() {
+    warumRundeEl.innerHTML = "";
+    if (!warumState) return;
+    const panel = document.createElement("div");
+    panel.className = "warum-panel";
+    panel.appendChild(warumState.step === 1 ? buildChallenge1() : buildChallenge2());
+    warumRundeEl.appendChild(panel);
+  }
+
+  // ---- Challenge 1: Fehler-Suche. Zufaellig (hasError) zeigt EIN Schritt (Index f) den
+  //      umgekehrten Pfeil (widerspricht seiner eigenen Begruendung) — oder es ist gar
+  //      kein Fehler drin und alle Pfeile stimmen. Referenzkette (#chain) ist waehrenddessen
+  //      verdeckt (hideChain(), siehe warumRundeBtn-Handler), es zaehlt nur Kopfrechnen. ----
+  function buildChallenge1() {
+    const wrap = document.createElement("div");
+    const { f, hasError, selectedIdx, resolved } = warumState.c1;
+
+    const h3 = document.createElement("h3");
+    h3.textContent = "Warum-Runde · Challenge 1 von 2: Fehler-Suche";
+    wrap.appendChild(h3);
+
+    const frage = document.createElement("div");
+    frage.className = "frage";
+    frage.textContent = "Verifizieren — prüfe jede Wirkung aus dem Kopf. Einer der Schritte könnte falsch begründet sein — oder alle stimmen. Klick das falsche Glied — oder «Alles korrekt».";
+    wrap.appendChild(frage);
+
+    const row = document.createElement("div");
+    row.className = "subrow";
+
+    // Start-Knoten: fest, nicht klickbar, Richtung immer die wahre Ausloeser-Richtung
+    const startG = Gm[startGroesse];
+    const startDir = C.ausloeser.richtung;
+    const startItem = document.createElement("div");
+    startItem.className = "chain-item";
+    startItem.innerHTML = `
+      <div class="chip start">
+        <div class="sym">${escapeHtml(startG.symbol)}</div>
+        <div class="lbl">${escapeHtml(startG.label)}</div>
+        <div class="dirmark ${startDir === 'steigt' ? 'up' : 'down'}">${startDir === 'steigt' ? '↑' : '↓'}</div>
+      </div>
+    `;
+    row.appendChild(startItem);
+
+    for (let i = 0; i < loesungsSequenz.length; i++) {
+      const sep = document.createElement("div");
+      sep.className = "arrow-sep";
+      sep.textContent = "→";
+      row.appendChild(sep);
+
+      const gid = loesungsSequenz[i];
+      const g = Gm[gid];
+      const echtDir = sollRichtung[gid]; // wahre Soll-Richtung dieses Knotens
+      // Nur wenn hasError=true wird Schritt f umgedreht; sonst zeigt jeder Schritt die korrekte Richtung.
+      const zeigeDir = (hasError && i === f) ? (echtDir === "steigt" ? "sinkt" : "steigt") : echtDir;
+      const mechText = Km[C.schritte[i]].mechanismus; // wahrer Mechanismus-Satz, immer unveraendert
+
+      const item = document.createElement("div");
+      item.className = "chain-item";
+      const chip = document.createElement("div");
+      chip.className = "chip challenge locked";
+      chip.dataset.idx = String(i);
+
+      if (resolved) {
+        chip.classList.add("disabled");
+        const isCorrectPick = hasError && i === f;
+        if (i === selectedIdx) chip.classList.add(isCorrectPick ? "picked-correct" : "picked-wrong");
+        if (hasError && i === f) chip.classList.add("reveal-correct");
+      }
+
+      chip.innerHTML = `
+        <div class="sym">${escapeHtml(g.symbol)}</div>
+        <div class="dirmark ${zeigeDir === 'steigt' ? 'up' : 'down'}">${zeigeDir === 'steigt' ? '↑' : '↓'}</div>
+        <div class="mech"><span class="mech-label">Warum</span>${escapeHtml(mechText)}</div>
+      `;
+
+      if (!resolved) {
+        chip.addEventListener("click", () => {
+          warumState.c1.selectedIdx = i;
+          warumState.c1.resolved = true;
+          renderWarumRunde();
+        });
+      }
+
+      item.appendChild(chip);
+      row.appendChild(item);
+    }
+
+    wrap.appendChild(row);
+
+    // "Alles korrekt"-Button: richtige Antwort genau dann, wenn hasError=false.
+    const allCorrectBtn = document.createElement("button");
+    allCorrectBtn.className = "btn";
+    allCorrectBtn.textContent = "Alles korrekt";
+    allCorrectBtn.style.marginTop = "10px";
+    if (resolved) {
+      allCorrectBtn.disabled = true;
+      const wasPicked = selectedIdx === "correct";
+      const isTrueAnswer = !hasError;
+      if (wasPicked) allCorrectBtn.classList.add(isTrueAnswer ? "correct" : "incorrect");
+      else if (isTrueAnswer) allCorrectBtn.classList.add("correct"); // war die richtige Antwort, aber nicht gewaehlt
+    } else {
+      allCorrectBtn.addEventListener("click", () => {
+        warumState.c1.selectedIdx = "correct";
+        warumState.c1.resolved = true;
+        renderWarumRunde();
+      });
+    }
+    wrap.appendChild(allCorrectBtn);
+
+    if (resolved) {
+      const richtig = hasError ? (selectedIdx === f) : (selectedIdx === "correct");
+      const res = document.createElement("div");
+      res.className = "resolution";
+      if (hasError) {
+        const symFalsch = Gm[loesungsSequenz[f]].symbol;
+        const sollDirFalsch = sollRichtung[loesungsSequenz[f]];
+        res.innerHTML = (richtig ? "✓ Richtig. " : "✗ Nicht ganz. ") +
+          `${escapeHtml(symFalsch)} muss ${sollDirFalsch === 'steigt' ? '↑' : '↓'}-Pfeil sein — laut Begründung: ${escapeHtml(Km[C.schritte[f]].mechanismus)}`;
+      } else {
+        res.innerHTML = (richtig ? "✓ Richtig. " : "✗ Nicht ganz. ") +
+          "Alle Wirkungen stimmen — die Kette war korrekt.";
+      }
+      wrap.appendChild(res);
+
+      const weiterBtn = document.createElement("button");
+      weiterBtn.className = "btn primary weiter-btn";
+      weiterBtn.textContent = "Weiter zu Challenge 2";
+      weiterBtn.addEventListener("click", () => {
+        warumState.step = 2;
+        renderWarumRunde();
+      });
+      wrap.appendChild(weiterBtn);
+    }
+
+    return wrap;
+  }
+
+  // ---- Challenge 2: Kontrafaktisch. Kante g kippt Vorzeichen -> alle Knoten AB node_{g+1} drehen um. ----
+  function buildChallenge2() {
+    const wrap = document.createElement("div");
+    const { g, selected, checked } = warumState.c2;
+
+    const h3 = document.createElement("h3");
+    h3.textContent = "Warum-Runde · Challenge 2 von 2: Wirkungs-Radius";
+    wrap.appendChild(h3);
+
+    const symVon = Gm[nodeGroesseAt(g)].symbol;
+    const symNach = Gm[nodeGroesseAt(g + 1)].symbol;
+    const frage = document.createElement("div");
+    frage.className = "frage";
+    frage.innerHTML = `Angenommen, die Wirkung «${escapeHtml(symVon)} → ${escapeHtml(symNach)}» hätte das umgekehrte Vorzeichen. Welche Größen der Kette würden dann ihre Richtung ändern?`;
+    wrap.appendChild(frage);
+
+    const hint = document.createElement("div");
+    hint.className = "warum-hint";
+    hint.textContent = `Zur Erinnerung: ${Km[C.schritte[g]].mechanismus}`;
+    wrap.appendChild(hint);
+
+    const optsWrap = document.createElement("div");
+    optsWrap.className = "c2-options";
+
+    loesungsSequenz.forEach((gid, j) => {
+      const gr = Gm[gid];
+      const opt = document.createElement("div");
+      opt.className = "c2-opt";
+      const isSel = selected.has(j);
+      if (isSel) opt.classList.add("selected");
+      if (checked) {
+        opt.classList.add("disabled");
+        const shouldBe = j >= g;
+        if (shouldBe) opt.classList.add(isSel ? "correct" : "incorrect");
+        else if (isSel) opt.classList.add("incorrect");
+      }
+      opt.innerHTML = `<span class="c2-box">${isSel ? '☑' : '☐'}</span><span>${escapeHtml(gr.symbol)}</span>`;
+      if (!checked) {
+        opt.addEventListener("click", () => {
+          if (selected.has(j)) selected.delete(j); else selected.add(j);
+          renderWarumRunde();
+        });
+      }
+      optsWrap.appendChild(opt);
+    });
+
+    wrap.appendChild(optsWrap);
+
+    if (!checked) {
+      const checkBtn = document.createElement("button");
+      checkBtn.className = "btn primary";
+      checkBtn.textContent = "Prüfen";
+      checkBtn.addEventListener("click", () => {
+        warumState.c2.checked = true;
+        renderWarumRunde();
+      });
+      wrap.appendChild(checkBtn);
+    } else {
+      const korrekteSyms = loesungsSequenz.filter((_, j) => j >= g).map(gid => Gm[gid].symbol).join(", ");
+      const res = document.createElement("div");
+      res.className = "resolution";
+      res.innerHTML = `Alles ab ${escapeHtml(Gm[nodeGroesseAt(g + 1)].symbol)} dreht sich um, davor bleibt es — weil eine gekippte Kante nur die NACHFOLGENDEN Größen umpolt. (Korrekt: ${escapeHtml(korrekteSyms)})`;
+      wrap.appendChild(res);
+    }
+
+    return wrap;
+  }
+
+  // ==================================================================
+  // Auswertung (NEU, additiv): reine Lese-Sicht auf sessionLog. Erfindet nichts —
+  // jede Richtung kommt aus sollRichtung/chain.steps[i].soll, jeder Mechanismus-Satz
+  // aus Km[...].mechanismus (bereits beim Snapshot in checkStep() so abgelegt).
+  // ==================================================================
+  auswertungBtn.addEventListener("click", renderAuswertung);
+
+  function renderAuswertung() {
+    // Toggle: erneuter Klick auf den Button ODER "Schließen" im Panel blendet wieder aus.
+    if (auswertungEl.style.display === "block") {
+      auswertungEl.style.display = "none";
+      auswertungEl.innerHTML = "";
+      return;
+    }
+
+    auswertungEl.innerHTML = "";
+    const panel = document.createElement("div");
+    panel.className = "warum-panel";
+
+    if (sessionLog.length === 0) {
+      panel.innerHTML = `<h3>Auswertung</h3><div class="frage">Noch keine abgeschlossene Kette in diesem Durchlauf.</div>`;
+      auswertungEl.appendChild(panel);
+      auswertungEl.style.display = "block";
+      return;
+    }
+
+    // ---- Kopfzeile: Gesamtstatistik ueber alle geloggten Ketten dieses Durchlaufs ----
+    let gesamtSchritte = 0;
+    let korrekteSchritte = 0;
+    sessionLog.forEach(chain => {
+      chain.steps.forEach(s => {
+        gesamtSchritte++;
+        if (s.korrektErstversuch) korrekteSchritte++;
+      });
+    });
+    const prozent = gesamtSchritte > 0 ? Math.round((korrekteSchritte / gesamtSchritte) * 100) : 0;
+
+    const h3 = document.createElement("h3");
+    const kettenWort = sessionLog.length === 1 ? "Kette" : "Ketten";
+    h3.textContent = `Auswertung · ${sessionLog.length} ${kettenWort} · ${korrekteSchritte}/${gesamtSchritte} Schritte auf Anhieb korrekt (${prozent}%)`;
+    panel.appendChild(h3);
+
+    // ---- Pro Kette eine Zeile: Modell-Label + Netto-Ergebnis + je Schritt ✓/✗ ----
+    sessionLog.forEach(chain => {
+      const row = document.createElement("div");
+      row.className = "ausw-kette";
+      const chainObj = DATA.ketten.find(k => k.id === chain.chainId);
+      const kanalLabel = (chainObj && chainObj.label) || (Mm[chain.modell] ? Mm[chain.modell].label : chain.modell);
+      const nettoPfeil = chain.nettoRichtung === "steigt" ? "↑" : "↓";
+
+      const modellSpan = document.createElement("span");
+      modellSpan.className = "ausw-modell";
+      modellSpan.textContent = `${kanalLabel}: ${chain.nettoSym}${nettoPfeil}`;
+      row.appendChild(modellSpan);
+
+      chain.steps.forEach(s => {
+        const stepSpan = document.createElement("span");
+        stepSpan.className = "ausw-step " + (s.korrektErstversuch ? "ok" : "err");
+        stepSpan.textContent = (s.korrektErstversuch ? "✓ " : "✗ ") + s.symbol;
+        row.appendChild(stepSpan);
+      });
+
+      panel.appendChild(row);
+    });
+
+    // ---- Lücken-Abschnitt: alle Schritte über alle Ketten mit Fehlversuch ODER "Warum: nein".
+    // selfcheck === null ("nicht beantwortet", v.a. beim jeweils letzten Schritt einer Kette —
+    // dessen Selbst-Check wird im bestehenden Flow nie abgefragt) zaehlt bewusst NICHT als Lücke.
+    const luecken = [];
+    sessionLog.forEach(chain => {
+      chain.steps.forEach(s => {
+        if (s.errors.length > 0 || s.selfcheck === "nein") luecken.push(s);
+      });
+    });
+
+    const lueckenHead = document.createElement("h3");
+    lueckenHead.style.marginTop = "16px";
+    lueckenHead.textContent = "Lücken (nochmal anschauen)";
+    panel.appendChild(lueckenHead);
+
+    if (luecken.length === 0) {
+      const ok = document.createElement("div");
+      ok.className = "frage";
+      ok.textContent = "Keine Lücken in diesem Durchlauf. Sauber.";
+      panel.appendChild(ok);
+    } else {
+      luecken.forEach(s => {
+        const pfeil = s.soll === "steigt" ? "↑" : "↓";
+        const errMap = e => e === "wrong-dir" ? "falsche Richtung" : e === "wrong-size" ? "falsche Größe" : e;
+        const tag = s.errors.length > 0
+          ? s.errors.map(errMap).join(", ")
+          : "unsicher · Warum nein";
+        const item = document.createElement("div");
+        item.className = "ausw-luecke";
+        item.innerHTML = `<span class="sym">${escapeHtml(s.symbol)}</span> soll ${pfeil}` +
+          `<span class="ausw-tag">${escapeHtml(tag)}</span>` +
+          `<span class="ausw-mech">${escapeHtml(s.mechanismus)}</span>`;
+        panel.appendChild(item);
+      });
+    }
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "btn ausw-close-btn";
+    closeBtn.textContent = "Schließen";
+    closeBtn.addEventListener("click", () => {
+      auswertungEl.style.display = "none";
+      auswertungEl.innerHTML = "";
+    });
+    panel.appendChild(closeBtn);
+
+    auswertungEl.appendChild(panel);
+    auswertungEl.style.display = "block";
+  }
+
+  // ---- Initiales Laden: Default-Kette, falls vorhanden, sonst erste gueltige Kette ----
+  setChain(validChains.find(c => c.id === "k_geldpolitik_expansiv") || validChains[0]);
+})();
+</script>
+
+</body>
+</html>

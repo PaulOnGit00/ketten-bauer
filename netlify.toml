@@ -1,0 +1,3 @@
+# Statische Seite: index.html + data.js liegen an der Wurzel, kein Build-Schritt.
+[build]
+  publish = "."
