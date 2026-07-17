@@ -1547,7 +1547,7 @@ window.MAKRO_DATA = {
    "nach": "reales_geldangebot",
    "vorzeichen": "+",
    "modell": "liquiditaetspraeferenz",
-   "mechanismus": "M steigt bei fixem P => reales Geldangebot M/P steigt"
+   "mechanismus": "M und M/P gleichlaeufig: bei fixem P bewegt sich das reale Geldangebot M/P mit der Geldmenge"
   },
   {
    "id": "e_MP_r",
@@ -1563,7 +1563,7 @@ window.MAKRO_DATA = {
    "nach": "investition",
    "vorzeichen": "-",
    "modell": "is_kurve",
-   "mechanismus": "niedrigerer Realzins => mehr lohnende Investitionen I(r)"
+   "mechanismus": "r und I gegenlaeufig: der Realzins ist der Finanzierungspreis und bestimmt die Zahl lohnender Investitionen I(r)"
   },
   {
    "id": "e_I_Y",
@@ -1571,7 +1571,7 @@ window.MAKRO_DATA = {
    "nach": "output",
    "vorzeichen": "+",
    "modell": "is_kurve",
-   "mechanismus": "mehr Investitionen => hoehere geplante Ausgaben => Y steigt"
+   "mechanismus": "I und Y gleichlaeufig: Investitionen sind Bestandteil der geplanten Ausgaben und bewegen Y mit"
   },
   {
    "id": "e_G_Y",
@@ -1619,7 +1619,7 @@ window.MAKRO_DATA = {
    "nach": "reales_geldangebot",
    "vorzeichen": "-",
    "modell": "is_lm",
-   "mechanismus": "P steigt => reales Geldangebot M/P sinkt (LM verschiebt sich nach links)"
+   "mechanismus": "P und M/P gegenlaeufig: bei fixem M bewegt sich das reale Geldangebot entgegengesetzt zum Preisniveau (LM verschiebt sich)"
   },
   {
    "id": "e_MP_vermoegen",
@@ -1699,7 +1699,7 @@ window.MAKRO_DATA = {
    "nach": "nettoexporte",
    "vorzeichen": "-",
    "modell": "mundell_fleming",
-   "mechanismus": "e steigt => inl. Gueter relativ teurer => Nettoexporte sinken"
+   "mechanismus": "e und NX gegenlaeufig: der reale Wechselkurs bestimmt die preisliche Wettbewerbsfaehigkeit heimischer Gueter"
   },
   {
    "id": "e_NX_Y",
@@ -1707,7 +1707,7 @@ window.MAKRO_DATA = {
    "nach": "output",
    "vorzeichen": "+",
    "modell": "mundell_fleming",
-   "mechanismus": "Nettoexporte sinken => Y sinkt"
+   "mechanismus": "NX und Y gleichlaeufig: Nettoexporte sind Bestandteil der Gesamtnachfrage und bewegen Y mit"
   },
   {
    "id": "e_M_e",
@@ -1787,7 +1787,7 @@ window.MAKRO_DATA = {
    "nach": "preisniveau",
    "vorzeichen": "-",
    "modell": "geldmarkt_quantitaet",
-   "mechanismus": "geringere reale Geldnachfrage => P steigt, damit M/P sinkt (Geldmarkt-GG)"
+   "mechanismus": "reale Geldnachfrage und P gegenlaeufig: im Geldmarkt-GG passt sich P so an, dass M/P die Geldnachfrage deckt"
   },
   {
    "id": "e_P_ausgaben",
@@ -1851,7 +1851,7 @@ window.MAKRO_DATA = {
    "nach": "output",
    "vorzeichen": "+",
    "modell": "keynes_kreuz",
-   "mechanismus": "hoehere geplante Ausgaben => Y steigt (Y=E)"
+   "mechanismus": "E und Y gleichlaeufig: im Guetermarkt-GG gilt Y=E (Produktion folgt der Nachfrage)"
   },
   {
    "id": "e_T_C",
@@ -1867,7 +1867,7 @@ window.MAKRO_DATA = {
    "nach": "geplante_ausgaben",
    "vorzeichen": "+",
    "modell": "keynes_kreuz",
-   "mechanismus": "hoeherer Konsum => hoehere geplante Ausgaben"
+   "mechanismus": "C und E gleichlaeufig: Konsum ist Bestandteil der geplanten Ausgaben"
   },
   {
    "id": "e_G_S",
@@ -1915,7 +1915,7 @@ window.MAKRO_DATA = {
    "nach": "nettokapitalexport",
    "vorzeichen": "-",
    "modell": "offene_vw_finanzmarkt",
-   "mechanismus": "I sinkt (S konstant) => (S-I) steigt"
+   "mechanismus": "I und (S-I) gegenlaeufig: bei konstantem S bewegt sich der Nettokapitalabfluss (S-I) entgegengesetzt zur Investition"
   },
   {
    "id": "e_NKE_NX",
@@ -2051,7 +2051,7 @@ window.MAKRO_DATA = {
    "nach": "arbeitslosigkeit",
    "vorzeichen": "-",
    "modell": "phillips_kurve",
-   "mechanismus": "kontraktive Geldpolitik daempft Nachfrage => Arbeitslosigkeit steigt ueber u^n"
+   "mechanismus": "geldpolitischer Impuls und u gegenlaeufig: ueber die Nachfragewirkung bewegt sich die Arbeitslosigkeit entgegengesetzt (kurzfristige Phillips-Beziehung um u^n)"
   },
   {
    "id": "e_pie_pi",
@@ -2059,7 +2059,7 @@ window.MAKRO_DATA = {
    "nach": "inflation",
    "vorzeichen": "+",
    "modell": "phillips_kurve",
-   "mechanismus": "glaubhafte Ankuendigung => pi^e sinkt sofort => Inflation sinkt (rationale Erwartungen)"
+   "mechanismus": "erwartete und tatsaechliche Inflation gleichlaeufig: pi^e schlaegt in der Phillips-Kurve auf pi durch"
   },
   {
    "id": "e_u_dequal",
@@ -2075,7 +2075,7 @@ window.MAKRO_DATA = {
    "nach": "invest_prokopf",
    "vorzeichen": "+",
    "modell": "solow",
-   "mechanismus": "s steigt => Investitionen s*f(k) steigen"
+   "mechanismus": "s und Investitionen gleichlaeufig: die Sparquote skaliert die Investitionen s*f(k)"
   },
   {
    "id": "e_i_k",
@@ -2091,7 +2091,7 @@ window.MAKRO_DATA = {
    "nach": "output_pro_kopf",
    "vorzeichen": "+",
    "modell": "solow",
-   "mechanismus": "y=f(k) => hoeheres k => hoeheres y"
+   "mechanismus": "k und y gleichlaeufig: Produktionsfunktion y=f(k)"
   },
   {
    "id": "e_s_c",
@@ -2155,7 +2155,7 @@ window.MAKRO_DATA = {
    "nach": "jobfindungsrate",
    "vorzeichen": "-",
    "modell": "natuerliche_arbeitslosenquote",
-   "mechanismus": "AV => geringere Suchdringlichkeit/Opportunitaetskosten => Jobfindungsrate f sinkt"
+   "mechanismus": "Arbeitslosenversicherung und Jobfindungsrate f gegenlaeufig: die Absicherung bestimmt Suchdringlichkeit/Opportunitaetskosten der Jobsuche"
   },
   {
    "id": "e_f_u",
@@ -2163,7 +2163,7 @@ window.MAKRO_DATA = {
    "nach": "arbeitslosigkeit",
    "vorzeichen": "-",
    "modell": "natuerliche_arbeitslosenquote",
-   "mechanismus": "f sinkt => Dauer der Arbeitslosigkeit steigt => U/L steigt"
+   "mechanismus": "Jobfindungsrate f und Arbeitslosenquote u gegenlaeufig: ueber u=s/(s+f) bestimmt f die Dauer der Arbeitslosigkeit"
   },
   {
    "id": "e_reallohn_al",
@@ -2259,7 +2259,7 @@ window.MAKRO_DATA = {
    "nach": "realer_wechselkurs",
    "vorzeichen": "-",
    "modell": "mundell_fleming",
-   "mechanismus": "M/P sinkt => LM* nach links => realer Wechselkurs steigt"
+   "mechanismus": "M/P und realer Wechselkurs gegenlaeufig: die Realkasse verschiebt LM*, der reale Wechselkurs reagiert entgegengesetzt"
   },
   {
    "id": "e_eps_NXmf",
@@ -2267,7 +2267,7 @@ window.MAKRO_DATA = {
    "nach": "nettoexporte",
    "vorzeichen": "-",
    "modell": "mundell_fleming",
-   "mechanismus": "hoeherer realer Wechselkurs => NX sinken"
+   "mechanismus": "realer Wechselkurs und NX gegenlaeufig: die preisliche Wettbewerbsfaehigkeit heimischer Gueter bewegt die Nettoexporte entgegengesetzt"
   },
   {
    "id": "e_NX_epress",
@@ -2555,7 +2555,7 @@ window.MAKRO_DATA = {
    "nach": "nominalzins",
    "vorzeichen": "-",
    "modell": "dad_das",
-   "mechanismus": "Taylor-Regel: höheres Inflationsziel senkt geforderten Zins (Term −θπ·π*)"
+   "mechanismus": "Inflationsziel π* und geforderter Zins gegenlaeufig (Taylor-Regel-Term −θπ·π*)"
   },
   {
    "id": "e_dad_Y_i",

@@ -39,6 +39,13 @@
   #pool{width:100%;border-right:none;border-bottom:1px solid var(--line);padding:12px 14px;min-height:auto;}
   #pool h2{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:0 0 12px;font-weight:650;}
   #poolHint{font-size:11px;color:var(--mut);margin:-6px 0 12px;font-style:italic;}
+  .task-context{color:var(--mut);font-size:13px;}
+  #taskContext{margin:2px 0 12px;display:flex;flex-direction:column;gap:4px;font-size:12px;}
+  #taskContext .ctx-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+  #taskContext .ctx-label{color:var(--mut);font-weight:600;}
+  #taskContext .ctx-val{color:var(--txt);}
+  #taskContext .ctx-chip{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1px 8px;font-size:11px;color:var(--txt);}
+  #taskContext .ctx-empty{color:var(--mut);font-style:italic;}
   #poolList{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;}
 
   .tile{background:#1c2130;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:grab;user-select:none;transition:border-color .12s, transform .08s;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:52px;min-width:0;overflow:hidden;}
@@ -65,6 +72,7 @@
   .chip .dirmark{margin-top:6px;font-size:15px;font-weight:700;}
   .chip .dirmark.up{color:var(--pos);}
   .chip .dirmark.down{color:var(--neg);}
+  .chip .dirmark.flat{color:var(--warn);}
 
   .chip .btnrow{display:flex;gap:4px;margin-top:8px;justify-content:center;}
   .dirbtn{width:26px;height:24px;border-radius:6px;border:1px solid var(--line);background:#12151d;color:var(--mut);cursor:pointer;font-size:13px;font-weight:700;line-height:1;}
@@ -121,6 +129,7 @@
   .pill .dirmark{font-size:13px;font-weight:700;}
   .pill .dirmark.up{color:var(--pos);}
   .pill .dirmark.down{color:var(--neg);}
+  .pill .dirmark.flat{color:var(--warn);}
   .pill.pill-start{border-color:var(--pos);background:#16221c;}
   .pill.pill-locked{border-color:var(--pos);}
   .pill.pill-active{border-color:var(--accent);background:#182236;}
@@ -155,6 +164,7 @@
   #detailPanel .panel-locked{font-size:15px;font-weight:700;margin-bottom:4px;}
   #detailPanel .panel-locked .dirmark.up{color:var(--pos);}
   #detailPanel .panel-locked .dirmark.down{color:var(--neg);}
+  #detailPanel .panel-locked .dirmark.flat{color:var(--warn);}
   #detailPanel .mech{margin-top:0;text-align:left;font-size:12px;line-height:1.5;color:var(--mut);}
   #detailPanel .mech-label{display:inline-block;margin-right:4px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--accent);}
   #detailPanel .selfcheck{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);}
@@ -277,7 +287,8 @@
 
 <header>
   <h1>Ketten-Bauer</h1>
-  <p id="taskText">IS-LM: Die Geldmenge <b>M</b> steigt. Bau die Wirkungskette bis zum Output <b>Y</b>.</p>
+  <p id="taskText">Aufgabe wird geladen…</p>
+  <div id="taskContext"></div>
 </header>
 
 <div id="modeSwitch">
@@ -325,14 +336,71 @@
   const Mm = {}; // modell.id -> modell
   DATA.modelle.forEach(m => Mm[m.id] = m);
 
-  // ---- Gueltige Ketten (fuer "Andere Kette (zufaellig)"): einfache, vollstaendig
-  // durchgaengige, online-Ketten mit mind. 2 Schritten. ----
-  const validChains = DATA.ketten.filter(c =>
-    c.status === "online" && c.typ === "einfach" && c.schritte.length >= 2 &&
-    c.schritte.every((s, i) => i === 0 || Km[c.schritte[i - 1]].nach === Km[s].von) &&
-    Km[c.schritte[0]].von === c.ausloeser.groesse &&
-    Km[c.schritte[c.schritte.length - 1]].nach === c.netto.groesse
-  );
+  // ---- Trainierbarkeitspruefung (zentral, keine ID-Sonderfaelle) ----
+  // Eine Kette ist fuer den aktuellen linearen Ketten-Bauer nur trainierbar, wenn sie:
+  // online + einfach ist, mind. 2 Schritte hat, jeder Schritt real in Km existiert,
+  // die Schritte luecklos verbunden sind, der erste von-Knoten == ausloeser.groesse
+  // und der letzte nach-Knoten == netto.groesse ist, UND (neu) netto.richtung exakt
+  // "steigt" oder "sinkt" ist UND die Knotensequenz (Start + alle Schrittziele) keine
+  // Groessen-ID doppelt enthaelt. Die letzten beiden Regeln quarantaenisieren Netto-null-
+  // und Zustandsrueckkehrketten (z.B. M kehrt zu M zurueck), fuer die die bestehende
+  // Richtungspropagation (sollRichtung: 1 Eintrag pro Groessen-ID) UND die Pfeil-Renderer
+  // (nur steigt/sinkt kennen) fachlich nicht ausreichen — bis dafuer ein eigener
+  // Darstellungstyp existiert. Keine DB-Aenderung, keine ID-Sonderfaelle.
+  function isLinearTrainableChain(c) {
+    if (c.status !== "online") return false;
+    if (c.typ !== "einfach") return false;
+    if (c.schritte.length < 2) return false;
+    if (!c.schritte.every(sId => Km[sId])) return false;
+    if (!c.schritte.every((s, i) => i === 0 || Km[c.schritte[i - 1]].nach === Km[s].von)) return false;
+    if (Km[c.schritte[0]].von !== c.ausloeser.groesse) return false;
+    if (Km[c.schritte[c.schritte.length - 1]].nach !== c.netto.groesse) return false;
+    if (c.netto.richtung !== "steigt" && c.netto.richtung !== "sinkt") return false;
+    const knotenSequenz = [c.ausloeser.groesse, ...c.schritte.map(sId => Km[sId].nach)];
+    if (new Set(knotenSequenz).size !== knotenSequenz.length) return false;
+    return true;
+  }
+
+  // ---- Gueltige (trainierbare) Ketten (fuer "Andere Kette (zufaellig)" + Default-Laden) ----
+  const validChains = DATA.ketten.filter(isLinearTrainableChain);
+
+  // ---- Entwicklungsdiagnose (rein informativ, KEINE Nutzeranzeige): listet alle Online-
+  // Einfachketten auf, die trotz status==="online" && typ==="einfach" NICHT in validChains
+  // gelandet sind, samt Grund. Ermittelt die IDs real statt eine feste Anzahl anzunehmen. ----
+  (function logAusgeschlosseneKetten() {
+    const onlineEinfach = DATA.ketten.filter(c => c.status === "online" && c.typ === "einfach");
+    const ausgeschlossen = onlineEinfach
+      .filter(c => !isLinearTrainableChain(c))
+      .map(c => {
+        const gruende = [];
+        if (c.schritte.length < 2) gruende.push("weniger als 2 Schritte");
+        if (!c.schritte.every(sId => Km[sId])) {
+          gruende.push("Schritt-ID fehlt in Km");
+        } else {
+          if (!c.schritte.every((s, i) => i === 0 || Km[c.schritte[i - 1]].nach === Km[s].von)) {
+            gruende.push("Schritte nicht luecklos verbunden");
+          }
+          if (Km[c.schritte[0]].von !== c.ausloeser.groesse) gruende.push("erster Schritt startet nicht bei ausloeser.groesse");
+          if (Km[c.schritte[c.schritte.length - 1]].nach !== c.netto.groesse) gruende.push("letzter Schritt endet nicht bei netto.groesse");
+        }
+        if (c.netto.richtung !== "steigt" && c.netto.richtung !== "sinkt") {
+          gruende.push(`netto.richtung ist "${c.netto.richtung}" (nicht linear darstellbar, z.B. Zustandsrueckkehr)`);
+        }
+        if (c.schritte.every(sId => Km[sId])) {
+          const knotenSequenz = [c.ausloeser.groesse, ...c.schritte.map(sId => Km[sId].nach)];
+          if (new Set(knotenSequenz).size !== knotenSequenz.length) {
+            gruende.push("Knotensequenz enthaelt eine Groessen-ID doppelt (Zustandsrueckkehr)");
+          }
+        }
+        return { id: c.id, gruende };
+      });
+    if (ausgeschlossen.length > 0) {
+      console.warn(
+        `[Ketten-Bauer] ${ausgeschlossen.length} Online-Einfachkette(n) aus fachlich-strukturellen Gruenden vom linearen Ketten-Bauer ausgeschlossen (nicht in validChains):`,
+        ausgeschlossen.map(a => `${a.id}: ${a.gruende.join("; ")}`)
+      );
+    }
+  })();
 
   // ---- Kette laden (variabel — via setChain) ----
   // Diese Variablen werden von setChain() bei jedem Kettenwechsel NEU gesetzt.
@@ -350,6 +418,24 @@
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  }
+
+  // ---- Richtungsdarstellung (zentral, reine Helfer) ----
+  // Ersetzt alle bisherigen binaeren `richtung === "steigt" ? "↑" : "↓"`-Stellen. "unveraendert"
+  // bekommt einen eigenen, korrekten Pfeil (→) statt faelschlich als "↓" durchzufallen; ein
+  // unbekannter/fehlender Wert bekommt einen sichtbar defensiven Fallback ("?"), NIE einen
+  // irrefuehrenden Abwaertspfeil.
+  function directionArrow(richtung) {
+    if (richtung === "steigt") return "↑";
+    if (richtung === "sinkt") return "↓";
+    if (richtung === "unveraendert") return "→";
+    return "?";
+  }
+  function directionClass(richtung) {
+    if (richtung === "steigt") return "up";
+    if (richtung === "sinkt") return "down";
+    if (richtung === "unveraendert") return "flat";
+    return "";
   }
 
   // Setzt eine neue aktive Kette + alle davon abgeleiteten Werte, aktualisiert den
@@ -411,17 +497,62 @@
 
     poolIds = shuffleArray([...poolBase, ...distraktorIds]);
 
-    // ---- Aufgabentext ----
-    // Header nennt den KANAL (C.label, bereits verifiziertes DB-Feld) statt des Modell-Tags:
-    // desambiguiert Ketten mit gleichen Endpunkten (z.B. P->Y via Pigou vs. Schuldendeflation)
-    // und behebt falsch getaggte modell-Felder im Header. Fallback auf Modell-Label.
-    const kanalLabel = C.label || (Mm[C.modell] ? Mm[C.modell].label : C.modell);
-    const ausSym = Gm[startGroesse].symbol;
-    const nettoSym = Gm[C.netto.groesse].symbol;
-    taskTextEl.innerHTML = `${escapeHtml(kanalLabel)}: ${escapeHtml(ausSym)} ${escapeHtml(C.ausloeser.richtung)}. Bau die Wirkungskette bis ${escapeHtml(nettoSym)}.`;
+    // ---- Aufgabentext (levelabhaengig) + persistenter Modellkontext (Modell/Kanal/Annahmen) ----
+    renderTaskText();
+    renderTaskContext();
 
     resetProgress();
     renderAll();
+  }
+
+  // Erzeugt den Aufgabentext an EINER zentralen Stelle, levelabhaengig. Kanal (C.label, bereits
+  // verifiziertes DB-Feld), Ausloeser und Ziel bleiben in JEDEM Level sichtbar; der Kurzauftrag
+  // beschreibt die tatsaechliche Denkoperation des aktuellen Levels. Aufgerufen aus setChain()
+  // (neue Kette) und setMode() (Levelwechsel), damit der Text beim Wechsel sofort passt.
+  // Liest ausschliesslich vorhandene DB-Felder und escaped sie. KEINE neuen Fachinfos/Annahmen.
+  function renderTaskText() {
+    if (!C) return;
+    const kanalLabel = C.label || (Mm[C.modell] ? Mm[C.modell].label : C.modell);
+    const ausSym = Gm[startGroesse].symbol;
+    const nettoSym = Gm[C.netto.groesse].symbol;
+    const kontext = `${escapeHtml(kanalLabel)} · Auslöser ${escapeHtml(ausSym)} ${directionArrow(C.ausloeser.richtung)} · Ziel ${escapeHtml(nettoSym)}`;
+    let auftrag, heading;
+    if (mode === "fehler") {
+      auftrag = "Prüfe, ob Pfeile und Begründungen zusammenpassen.";
+      heading = "Begründungen prüfen";
+    } else if (mode === "vorzeichen") {
+      auftrag = "Die Größenfolge steht fest. Setze für jede Größe die richtige Richtung.";
+      heading = "Vorzeichen setzen";
+    } else {
+      auftrag = "Baue Größenfolge und Richtungen selbst.";
+      heading = "Deine Kette";
+    }
+    taskTextEl.innerHTML = `<b>${auftrag}</b><br><span class="task-context">${kontext}</span>`;
+    chainHeadingEl.textContent = heading;
+  }
+
+  // Persistenter Modellkontext direkt unter dem Aufgabentext: in welchem MODELL und unter welchen
+  // ANNAHMEN die aktuelle Wirkung gilt. Verhindert, dass eine Variable modelluebergreifend als
+  // universell kausal gelernt wird. Bleibt in L1/L2/L3 (und spaeter Klausur) sichtbar. Liest nur
+  // vorhandene DB-Felder (Mm[C.modell].annahmen wortgetreu), erfindet NICHTS.
+  function renderTaskContext() {
+    const el = document.getElementById("taskContext");
+    if (!el || !C) return;
+    const modell = Mm[C.modell];
+    if (!modell) {
+      console.warn(`[Ketten-Bauer] Modell "${C.modell}" nicht in Mm gefunden — Kontextblock zeigt defensiven Fallback.`);
+      el.innerHTML = `<div class="ctx-row"><span class="ctx-label">Modell:</span> <span class="ctx-val">${escapeHtml(String(C.modell))} (nicht in DB)</span></div>`;
+      return;
+    }
+    const kanalLabel = C.label || modell.label;
+    const annahmen = Array.isArray(modell.annahmen) ? modell.annahmen : [];
+    const annahmenHtml = annahmen.length > 0
+      ? annahmen.map(a => `<span class="ctx-chip">${escapeHtml(a)}</span>`).join("")
+      : `<span class="ctx-empty">Keine Annahmen in der DB hinterlegt</span>`;
+    el.innerHTML =
+      `<div class="ctx-row"><span class="ctx-label">Modell:</span> <span class="ctx-val">${escapeHtml(modell.label)}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-label">Kanal:</span> <span class="ctx-val">${escapeHtml(kanalLabel)}</span></div>` +
+      `<div class="ctx-row ctx-annahmen"><span class="ctx-label">Annahmen:</span> ${annahmenHtml}</div>`;
   }
 
   // ---- Schritt-State-Machine ----
@@ -437,11 +568,17 @@
   let current = null;
   let selbstcheck = [];
   let draggedId = null; // aktuell gezogene Pool-Kachel (groesseId)
+  // completionFinalized = true, sobald die AKTUELLE Kette fachlich komplett UND der letzte
+  // Selbstcheck (Ja/Nein) beantwortet UND der Snapshot in sessionLog geschrieben wurde
+  // (siehe finalizeCompletedChain()). Trennt die beiden Zustaende "fachlich fertig, letzter
+  // Reveal noch offen" (isKetteKomplett() true, completionFinalized false) und "wirklich fertig"
+  // (beides true) — nur Letzteres darf das Abschlusspanel zeigen / das Detail-Panel ausblenden.
+  let completionFinalized = false;
 
   // ---- Auswertung (NEU, additiv): reines In-Memory-Session-Gedaechtnis, KEIN localStorage.
   // sessionLog ueberlebt Kettenwechsel (setChain/resetProgress fassen es nicht an) und wird
   // nur beim "Zurücksetzen"-Button-Klick geleert (siehe dortiger Handler).
-  // sessionLog[i] = ein Snapshot pro VOLLSTAENDIG abgeschlossener Kette (siehe checkStep()).
+  // sessionLog[i] = ein Snapshot pro VOLLSTAENDIG abgeschlossener Kette (siehe finalizeCompletedChain()).
   let sessionLog = [];
   // stepErrors[currentIndex] = Liste der Fehltyp-Vorkommen ("wrong-size"/"wrong-dir") VOR dem
   // Sperren dieses Schritts. Wird in resetProgress() zurueckgesetzt (pro Kette/Kettenwechsel neu).
@@ -488,6 +625,7 @@
     selbstcheck = [];
     stepErrors = [];
     lastLockedIdx = null;
+    completionFinalized = false;
     warumState = null;
     warumTriggerEl.style.display = "none";
     warumRundeEl.style.display = "none";
@@ -501,6 +639,11 @@
   function hideChain() {
     chainEl.style.display = "none";
     chainHeadingEl.style.display = "none";
+    // In L1 (fehler) sind Pfeile + Begruendungen der Challenge sichtbar -> "aus dem Kopf" waere
+    // irrefuehrend. In der Warum-Runde (L2/L3) ist die Kette wirklich verdeckt -> Text bleibt korrekt.
+    chainHiddenHintEl.textContent = (mode === "fehler")
+      ? "Begründungen sichtbar — prüfe, ob Pfeil und Begründung zusammenpassen."
+      : "Kette verdeckt — prüfe aus dem Kopf.";
     chainHiddenHintEl.style.display = "block";
     detailPanelEl.style.display = "none";
   }
@@ -599,8 +742,8 @@
     // Start-Pille (fest) — Richtung kommt aus C.ausloeser.richtung
     // (nicht hartcodiert "steigt", manche Ketten starten mit einem sinkenden Ausloeser)
     const startG = Gm[startGroesse];
-    const startDirKlasse = C.ausloeser.richtung === "steigt" ? "up" : "down";
-    const startDirPfeil = C.ausloeser.richtung === "steigt" ? "↑" : "↓";
+    const startDirKlasse = directionClass(C.ausloeser.richtung);
+    const startDirPfeil = directionArrow(C.ausloeser.richtung);
     const startPill = document.createElement("div");
     startPill.className = "pill pill-start";
     startPill.title = startG.label;
@@ -621,19 +764,24 @@
     placed.forEach((p) => {
       appendChainSep();
       const g = Gm[p.groesseId];
-      const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+      const pfeil = directionArrow(p.richtung);
       const pill = document.createElement("div");
       pill.className = "pill pill-locked";
       pill.title = g.label;
       pill.innerHTML = `
         <span class="sym">${escapeHtml(g.symbol)}</span>
-        <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span>
+        <span class="dirmark ${directionClass(p.richtung)}">${pfeil}</span>
       `;
       chainEl.appendChild(pill);
     });
 
+    // Fachlich komplett heisst noch NICHT fertig: solange completionFinalized false ist, wartet
+    // der letzte Schritt noch auf seinen Mechanismus-Reveal + Selbst-Check (siehe renderDetailPanel
+    // Fall 2 unten) — das Abschlusspanel erscheint erst danach, ueber finalizeCompletedChain().
     if (isKetteKomplett()) {
-      renderAbschlussPanel();
+      if (completionFinalized) {
+        renderAbschlussPanel();
+      }
       return;
     }
 
@@ -667,9 +815,13 @@
       if (current.status === "wrong-size") pill.classList.add("wrong-size");
       else if (current.status === "wrong-dir") pill.classList.add("wrong-dir");
 
+      // Leer solange current.richtung noch nicht gewaehlt (null) — bewusst KEIN "?"-Fallback hier,
+      // das waere waehrend der Auswahl selbst irrefuehrend. directionArrow/-Class centralisieren nur
+      // die Darstellung des gewaehlten Werts (steigt/sinkt).
       let dirMarkHtml = "";
-      if (current.richtung === "steigt") dirMarkHtml = `<span class="dirmark up">↑</span>`;
-      else if (current.richtung === "sinkt") dirMarkHtml = `<span class="dirmark down">↓</span>`;
+      if (current.richtung) {
+        dirMarkHtml = `<span class="dirmark ${directionClass(current.richtung)}">${directionArrow(current.richtung)}</span>`;
+      }
 
       pill.innerHTML = `
         <span class="sym">${escapeHtml(g.symbol)}</span>
@@ -708,13 +860,13 @@
 
       if (i < placed.length) {
         const p = placed[i];
-        const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+        const pfeil = directionArrow(p.richtung);
         const pill = document.createElement("div");
         pill.className = "pill pill-locked";
         pill.title = g.label;
         pill.innerHTML = `
           <span class="sym">${escapeHtml(g.symbol)}</span>
-          <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span>
+          <span class="dirmark ${directionClass(p.richtung)}">${pfeil}</span>
         `;
         chainEl.appendChild(pill);
       } else if (i === currentIndex && current) {
@@ -723,9 +875,11 @@
         pill.title = g.label;
         if (current.status === "wrong-dir") pill.classList.add("wrong-dir");
 
+        // Leer solange current.richtung noch nicht gewaehlt (null) — siehe Begruendung in renderChain().
         let dirMarkHtml = "";
-        if (current.richtung === "steigt") dirMarkHtml = `<span class="dirmark up">↑</span>`;
-        else if (current.richtung === "sinkt") dirMarkHtml = `<span class="dirmark down">↓</span>`;
+        if (current.richtung) {
+          dirMarkHtml = `<span class="dirmark ${directionClass(current.richtung)}">${directionArrow(current.richtung)}</span>`;
+        }
 
         pill.innerHTML = `<span class="sym">${escapeHtml(g.symbol)}</span>${dirMarkHtml}`;
         chainEl.appendChild(pill);
@@ -738,7 +892,8 @@
       }
     }
 
-    if (isKetteKomplett()) {
+    // Siehe Kommentar in renderChain(): Abschlusspanel erst nach finalizeCompletedChain().
+    if (isKetteKomplett() && completionFinalized) {
       renderAbschlussPanel();
     }
   }
@@ -765,26 +920,60 @@
       lastLockedIdx = placed.length - 1; // nur fuers Detail-Panel-Rendering, keine Fluss-Logik
       current = null;
       currentIndex++;
+      // Kein Snapshot hier — auch beim LETZTEN Schritt nicht: der Mechanismus-Reveal +
+      // "Warum gewusst?" fuer diesen (auch den letzten) Schritt laeuft erst noch ueber
+      // renderDetailPanel()/handleSelfcheckAntwort(). Der sessionLog-Eintrag entsteht
+      // ausschliesslich in finalizeCompletedChain(), NACHDEM der letzte Selbstcheck
+      // beantwortet wurde — so kann kein Kettenwechsel/Reset vor dieser Antwort eine
+      // halbfertige Kette loggen.
+    }
+    renderAll();
+  }
 
-      // Auswertung (NEU, additiv): Kette gerade jetzt vollstaendig geworden -> genau EIN
-      // Snapshot in sessionLog. Feuert dadurch pro abgeschlossener Kette genau einmal.
-      if (isKetteKomplett()) {
-        sessionLog.push({
-          chainId: C.id,
-          modell: C.modell,
-          nettoSym: Gm[C.netto.groesse].symbol,
-          nettoRichtung: C.netto.richtung,
-          steps: loesungsSequenz.map((gid, i) => ({
-            groesseId: gid,
-            symbol: Gm[gid].symbol,
-            soll: sollRichtung[gid],
-            mechanismus: Km[C.schritte[i]].mechanismus,
-            errors: stepErrors[i] || [],
-            selfcheck: selbstcheck[i] || null,
-            korrektErstversuch: (stepErrors[i] || []).length === 0
-          }))
-        });
-      }
+  // Finalisiert eine fachlich komplette Kette GENAU EINMAL: schreibt den sessionLog-Snapshot
+  // (inkl. der Antwort des letzten Selbstchecks) und setzt den Abschlussstatus. Idempotent —
+  // wiederholte Aufrufe (z.B. durch mehrfaches Rendern oder erneutes Oeffnen der Auswertung)
+  // tun ab dem ersten erfolgreichen Aufruf nichts mehr. Tut ausserdem nichts, solange die Kette
+  // fachlich nicht komplett ist ODER der letzte Selbstcheck noch nicht "ja"/"nein" ist — verhindert
+  // damit Halb-Logs bei Kettenwechsel/Reset waehrend der letzten Reveal-Pause.
+  function finalizeCompletedChain() {
+    if (completionFinalized) return; // schon finalisiert -> verhindert Doppel-Log
+    if (!isKetteKomplett()) return; // fachlich noch nicht komplett
+    const lastIdx = loesungsSequenz.length - 1;
+    const letzteAntwort = selbstcheck[lastIdx];
+    if (letzteAntwort !== "ja" && letzteAntwort !== "nein") return; // letzter Selbstcheck noch offen
+
+    sessionLog.push({
+      chainId: C.id,
+      modell: C.modell,
+      // Bearbeitungslevel dieser Kette. mode ist hier verlaesslich der Baumodus: setMode() ruft
+      // resetProgress() -> ein Levelwechsel mitten im Bau verwirft den Fortschritt, eine finalisierte
+      // Kette wurde also vollstaendig im aktuellen mode gebaut. L1 (fehler) laeuft ueber einen eigenen
+      // Flow (startFehlerSuche/buildChallenge1) und erreicht diese Funktion nie.
+      level: mode, // "vorzeichen" (L2) | "bauen" (L3)
+      nettoSym: Gm[C.netto.groesse].symbol,
+      nettoRichtung: C.netto.richtung,
+      steps: loesungsSequenz.map((gid, i) => ({
+        groesseId: gid,
+        symbol: Gm[gid].symbol,
+        soll: sollRichtung[gid],
+        mechanismus: Km[C.schritte[i]].mechanismus,
+        errors: stepErrors[i] || [],
+        selfcheck: selbstcheck[i] || null,
+        korrektErstversuch: (stepErrors[i] || []).length === 0
+      }))
+    });
+    completionFinalized = true;
+    lastLockedIdx = null; // beendet die Reveal-Pause sauber -> Detail-Panel blendet aus, Abschlusspanel uebernimmt
+  }
+
+  // Gemeinsamer Handler fuer "Warum gewusst? Ja/Nein" — gilt fuer JEDEN gesperrten Schritt, nicht
+  // nur den letzten (keine Duplikation zwischen frueheren Schritten und dem letzten Schritt). Setzt
+  // die Antwort und stoesst beim LETZTEN Schritt zusaetzlich die Finalisierung der Kette an.
+  function handleSelfcheckAntwort(idx, antwort) {
+    selbstcheck[idx] = antwort;
+    if (idx === loesungsSequenz.length - 1) {
+      finalizeCompletedChain();
     }
     renderAll();
   }
@@ -793,7 +982,7 @@
     feedbackEl.style.display = "block";
     feedbackEl.className = "success";
     const nettoG = Gm[C.netto.groesse];
-    const pfeil = C.netto.richtung === "steigt" ? "↑" : "↓";
+    const pfeil = directionArrow(C.netto.richtung);
     const janzahl = selbstcheck.filter(v => v === "ja").length;
     feedbackEl.innerHTML = `
       ✓ Kette komplett — Netto: ${escapeHtml(nettoG.symbol)} ${pfeil} (${escapeHtml(C.netto.richtung)})<br>
@@ -818,7 +1007,11 @@
       return;
     }
 
-    if (isKetteKomplett()) {
+    // Nur der WIRKLICH finalisierte Abschluss blendet das Detail-Panel aus. Ein noch offener
+    // letzter Selbstcheck (isKetteKomplett() true, completionFinalized false) hat Vorrang und
+    // faellt unten in Fall 2 (lastLockedIdx zeigt auf den letzten Schritt) — der letzte Schritt
+    // durchlaeuft damit denselben Reveal-/Selbstcheck-Zyklus wie jeder andere Schritt.
+    if (isKetteKomplett() && completionFinalized) {
       // Abschluss-Ergebnis + Verifizieren-Button laufen unveraendert ueber #feedback /
       // #warumRundeTrigger weiter (renderAbschlussPanel) — Detail-Panel wird hier nur ausgeblendet.
       detailPanelEl.style.display = "none";
@@ -882,27 +1075,27 @@
       const idx = lastLockedIdx;
       const p = placed[idx];
       const g = Gm[p.groesseId];
-      const pfeil = p.richtung === "steigt" ? "↑" : "↓";
+      const pfeil = directionArrow(p.richtung);
 
       const wrap = document.createElement("div");
       wrap.className = "panel-body";
       // Hinweis-/Weiter-Zeile unterscheidet sich je Modus: im Bau-Modus tippt man die naechste
       // Groesse aus dem Pool (das triggert placeTile -> naechster Schritt). Im Vorzeichen-Modus
       // gibt es keinen Pool, also ein expliziter "Weiter"-Button, der denselben Effekt hat
-      // (naechste, vorgegebene Zielgroesse als current setzen).
-      const stepHtml = mode === "vorzeichen" ? "" : `<div class="panel-hint">→ nächste Größe tippen</div>`;
+      // (naechste, vorgegebene Zielgroesse als current setzen). Ist die Kette gerade mit DIESEM
+      // Schritt fachlich komplett geworden (isKetteKomplett()), gibt es keinen naechsten Schritt
+      // mehr -> weder Hinweis noch Weiter-Button, nur der Selbst-Check zaehlt.
+      const stepHtml = (mode === "vorzeichen" || isKetteKomplett()) ? "" : `<div class="panel-hint">→ nächste Größe tippen</div>`;
       wrap.innerHTML = `
-        <div class="panel-locked">✓ <span class="sym">${escapeHtml(g.symbol)}</span> <span class="dirmark ${p.richtung === 'steigt' ? 'up' : 'down'}">${pfeil}</span></div>
+        <div class="panel-locked">✓ <span class="sym">${escapeHtml(g.symbol)}</span> <span class="dirmark ${directionClass(p.richtung)}">${pfeil}</span></div>
         ${buildRevealHtml(idx)}
         ${stepHtml}
       `;
       wrap.querySelector(".ja-btn").addEventListener("click", () => {
-        selbstcheck[idx] = "ja";
-        renderAll();
+        handleSelfcheckAntwort(idx, "ja");
       });
       wrap.querySelector(".nein-btn").addEventListener("click", () => {
-        selbstcheck[idx] = "nein";
-        renderAll();
+        handleSelfcheckAntwort(idx, "nein");
       });
       if (mode === "vorzeichen" && !isKetteKomplett()) {
         const weiterBtn = document.createElement("button");
@@ -977,6 +1170,7 @@
     modeBauenBtn.classList.toggle("active", mode === "bauen");
     document.body.classList.toggle("mode-fehler", mode === "fehler");
     document.body.classList.toggle("mode-vorzeichen", mode === "vorzeichen");
+    renderTaskText(); // Aufgabentext + Ueberschrift sofort an das neue Level anpassen (ohne Kettenwechsel)
     // resetProgress() raeumt u.a. warumState/warumRunde auf und zeigt die Kette wieder (showChain()) —
     // das ist genau das noetige Aufraeumen beim Verlassen von L1 (Punkt "Wechsel WEG von L1" im Spec).
     resetProgress();
@@ -1108,7 +1302,7 @@
 
     const frage = document.createElement("div");
     frage.className = "frage";
-    frage.textContent = "Verifizieren — prüfe jede Wirkung aus dem Kopf. Einer der Schritte könnte falsch begründet sein — oder alle stimmen. Klick das falsche Glied — oder «Alles korrekt».";
+    frage.textContent = "Verifizieren — vergleiche bei jedem Glied Pfeil und Begründung. Einer der Schritte könnte falsch begründet sein — oder alle stimmen. Klick das falsche Glied — oder «Alles korrekt».";
     wrap.appendChild(frage);
 
     const row = document.createElement("div");
@@ -1123,7 +1317,7 @@
       <div class="chip start">
         <div class="l1head" title="${escapeHtml(startG.label)}">
           <div class="sym">${escapeHtml(startG.symbol)}</div>
-          <div class="dirmark ${startDir === 'steigt' ? 'up' : 'down'}">${startDir === 'steigt' ? '↑' : '↓'}</div>
+          <div class="dirmark ${directionClass(startDir)}">${directionArrow(startDir)}</div>
         </div>
       </div>
     `;
@@ -1158,7 +1352,7 @@
       chip.innerHTML = `
         <div class="l1head" title="${escapeHtml(g.label)}">
           <div class="sym">${escapeHtml(g.symbol)}</div>
-          <div class="dirmark ${zeigeDir === 'steigt' ? 'up' : 'down'}">${zeigeDir === 'steigt' ? '↑' : '↓'}</div>
+          <div class="dirmark ${directionClass(zeigeDir)}">${directionArrow(zeigeDir)}</div>
         </div>
         <div class="mech"><span class="mech-label">Warum</span>${escapeHtml(mechText)}</div>
       `;
@@ -1215,7 +1409,7 @@
         const symFalsch = Gm[loesungsSequenz[f]].symbol;
         const sollDirFalsch = sollRichtung[loesungsSequenz[f]];
         res.innerHTML = (richtig ? "✓ Richtig. " : "✗ Nicht ganz. ") +
-          `${escapeHtml(symFalsch)} muss ${sollDirFalsch === 'steigt' ? '↑' : '↓'}-Pfeil sein — laut Begründung: ${escapeHtml(Km[C.schritte[f]].mechanismus)}`;
+          `${escapeHtml(symFalsch)} muss ${directionArrow(sollDirFalsch)}-Pfeil sein — laut Begründung: ${escapeHtml(Km[C.schritte[f]].mechanismus)}`;
       } else {
         res.innerHTML = (richtig ? "✓ Richtig. " : "✗ Nicht ganz. ") +
           "Alle Wirkungen stimmen — die Kette war korrekt.";
@@ -1342,29 +1536,56 @@
       return;
     }
 
-    // ---- Kopfzeile: Gesamtstatistik ueber alle geloggten Ketten dieses Durchlaufs ----
-    let gesamtSchritte = 0;
-    let korrekteSchritte = 0;
-    sessionLog.forEach(chain => {
-      chain.steps.forEach(s => {
-        gesamtSchritte++;
-        if (s.korrektErstversuch) korrekteSchritte++;
-      });
+    // ---- Nach Level getrennt auswerten (L2 Vorzeichen vs. L3 Bauen). Bewusst KEINE gemeinsame
+    // Gesamtprozentzahl mehr: L2 prueft nur Richtung, L3 Groesse+Richtung — nicht vergleichbar. ----
+    const gruppen = [
+      { level: "vorzeichen", titel: "L2 · Vorzeichen setzen", leer: "Noch keine abgeschlossene L2-Kette in diesem Durchlauf." },
+      { level: "bauen",      titel: "L3 · Alles bauen",       leer: "Noch keine abgeschlossene L3-Kette in diesem Durchlauf." }
+    ];
+    gruppen.forEach(g => renderAuswertungGruppe(panel, sessionLog.filter(c => c.level === g.level), g));
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "btn ausw-close-btn";
+    closeBtn.textContent = "Schließen";
+    closeBtn.addEventListener("click", () => {
+      auswertungEl.style.display = "none";
+      auswertungEl.innerHTML = "";
     });
-    const prozent = gesamtSchritte > 0 ? Math.round((korrekteSchritte / gesamtSchritte) * 100) : 0;
+    panel.appendChild(closeBtn);
 
-    const h3 = document.createElement("h3");
-    const kettenWort = sessionLog.length === 1 ? "Kette" : "Ketten";
-    h3.textContent = `Auswertung · ${sessionLog.length} ${kettenWort} · ${korrekteSchritte}/${gesamtSchritte} Schritte auf Anhieb korrekt (${prozent}%)`;
-    panel.appendChild(h3);
+    auswertungEl.appendChild(panel);
+    auswertungEl.style.display = "block";
+  }
 
-    // ---- Pro Kette eine Zeile: Modell-Label + Netto-Ergebnis + je Schritt ✓/✗ ----
-    sessionLog.forEach(chain => {
+  // Rendert EINE Level-Gruppe (L2 "vorzeichen" oder L3 "bauen") ins Auswertungs-Panel: Kopf mit
+  // levelINTERNER Quote (kein Cross-Level-Mittel), Kettenzeilen, eigener Luecken-Abschnitt.
+  // Leere Gruppe -> knappe neutrale Zeile statt grosser leerer Statistikbox.
+  function renderAuswertungGruppe(panel, chains, g) {
+    const head = document.createElement("h3");
+    head.style.marginTop = "16px";
+    if (chains.length === 0) {
+      head.textContent = g.titel;
+      panel.appendChild(head);
+      const neutral = document.createElement("div");
+      neutral.className = "frage";
+      neutral.textContent = g.leer;
+      panel.appendChild(neutral);
+      return;
+    }
+
+    let gesamt = 0, korrekt = 0;
+    chains.forEach(c => c.steps.forEach(s => { gesamt++; if (s.korrektErstversuch) korrekt++; }));
+    const prozent = gesamt > 0 ? Math.round((korrekt / gesamt) * 100) : 0;
+    const kettenWort = chains.length === 1 ? "Kette" : "Ketten";
+    head.textContent = `${g.titel} · ${chains.length} ${kettenWort} · ${korrekt}/${gesamt} Schritte auf Anhieb korrekt (${prozent}%)`;
+    panel.appendChild(head);
+
+    chains.forEach(chain => {
       const row = document.createElement("div");
       row.className = "ausw-kette";
       const chainObj = DATA.ketten.find(k => k.id === chain.chainId);
       const kanalLabel = (chainObj && chainObj.label) || (Mm[chain.modell] ? Mm[chain.modell].label : chain.modell);
-      const nettoPfeil = chain.nettoRichtung === "steigt" ? "↑" : "↓";
+      const nettoPfeil = directionArrow(chain.nettoRichtung);
 
       const modellSpan = document.createElement("span");
       modellSpan.className = "ausw-modell";
@@ -1381,53 +1602,42 @@
       panel.appendChild(row);
     });
 
-    // ---- Lücken-Abschnitt: alle Schritte über alle Ketten mit Fehlversuch ODER "Warum: nein".
-    // selfcheck === null ("nicht beantwortet", v.a. beim jeweils letzten Schritt einer Kette —
-    // dessen Selbst-Check wird im bestehenden Flow nie abgefragt) zaehlt bewusst NICHT als Lücke.
+    // ---- Luecken dieser Gruppe: Schritt mit Fehlversuch ODER "Warum: nein".
+    // selfcheck === null zaehlt bewusst NICHT als Luecke (frueherer Schritt ohne beantwortetes
+    // "Warum gewusst?"). In L2 ist "wrong-size" fachlich unerwartet (Groessenfolge steht fest) und
+    // wird sichtbar als solches diagnostiziert, aber nicht verschwiegen. ----
     const luecken = [];
-    sessionLog.forEach(chain => {
-      chain.steps.forEach(s => {
-        if (s.errors.length > 0 || s.selfcheck === "nein") luecken.push(s);
-      });
-    });
+    chains.forEach(chain => chain.steps.forEach(s => {
+      if (s.errors.length > 0 || s.selfcheck === "nein") luecken.push(s);
+    }));
 
-    const lueckenHead = document.createElement("h3");
-    lueckenHead.style.marginTop = "16px";
+    const lueckenHead = document.createElement("div");
+    lueckenHead.className = "ausw-luecken-head";
+    lueckenHead.style.margin = "8px 0 4px";
+    lueckenHead.style.fontWeight = "600";
     lueckenHead.textContent = "Lücken (nochmal anschauen)";
     panel.appendChild(lueckenHead);
 
     if (luecken.length === 0) {
       const ok = document.createElement("div");
       ok.className = "frage";
-      ok.textContent = "Keine Lücken in diesem Durchlauf. Sauber.";
+      ok.textContent = "Keine Lücken in dieser Gruppe. Sauber.";
       panel.appendChild(ok);
-    } else {
-      luecken.forEach(s => {
-        const pfeil = s.soll === "steigt" ? "↑" : "↓";
-        const errMap = e => e === "wrong-dir" ? "falsche Richtung" : e === "wrong-size" ? "falsche Größe" : e;
-        const tag = s.errors.length > 0
-          ? s.errors.map(errMap).join(", ")
-          : "unsicher · Warum nein";
-        const item = document.createElement("div");
-        item.className = "ausw-luecke";
-        item.innerHTML = `<span class="sym">${escapeHtml(s.symbol)}</span> soll ${pfeil}` +
-          `<span class="ausw-tag">${escapeHtml(tag)}</span>` +
-          `<span class="ausw-mech">${escapeHtml(s.mechanismus)}</span>`;
-        panel.appendChild(item);
-      });
+      return;
     }
 
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "btn ausw-close-btn";
-    closeBtn.textContent = "Schließen";
-    closeBtn.addEventListener("click", () => {
-      auswertungEl.style.display = "none";
-      auswertungEl.innerHTML = "";
+    luecken.forEach(s => {
+      const pfeil = directionArrow(s.soll);
+      const errMap = e => e === "wrong-dir" ? "falsche Richtung" : e === "wrong-size" ? "falsche Größe" : e;
+      let tag = s.errors.length > 0 ? s.errors.map(errMap).join(", ") : "unsicher · Warum nein";
+      if (g.level === "vorzeichen" && s.errors.includes("wrong-size")) tag += " (unerwartet in L2)";
+      const item = document.createElement("div");
+      item.className = "ausw-luecke";
+      item.innerHTML = `<span class="sym">${escapeHtml(s.symbol)}</span> soll ${pfeil}` +
+        `<span class="ausw-tag">${escapeHtml(tag)}</span>` +
+        `<span class="ausw-mech">${escapeHtml(s.mechanismus)}</span>`;
+      panel.appendChild(item);
     });
-    panel.appendChild(closeBtn);
-
-    auswertungEl.appendChild(panel);
-    auswertungEl.style.display = "block";
   }
 
   // ---- Initiales Laden: Default-Kette, falls vorhanden, sonst erste gueltige Kette ----
